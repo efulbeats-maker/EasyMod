@@ -5,6 +5,7 @@ const { getProxiedUrl } = require("../extractors/common.js");
 const { formatStream } = require("../formatter.js");
 const { checkQualityFromPlaylist } = require("../quality_helper.js");
 const { createTimeoutSignal } = require("../fetch_helper.js");
+const { resolveTmdbTvToImdb, isSeasonalTvLookup, isSeasonalImdbLookup, isValidSeasonalImdbMapping } = require("../anime_mapping_helper.js");
 
 function getUnityBaseUrl() {
   return "https://www.animeunity.so";
@@ -970,13 +971,17 @@ function parseExplicitRequestId(rawId) {
     };
   }
 
-  match = value.match(/^(tt\d+)$/i);
+  match = value.match(/^(tt\d+)(?::(\d+))?(?::(\d+))?$/i);
   if (match) {
     return {
       provider: "imdb",
       externalId: match[1],
-      seasonFromId: null,
-      episodeFromId: null
+      seasonFromId: match[3] ? normalizeRequestedSeason(match[2]) : null,
+      episodeFromId: match[3]
+        ? normalizeRequestedEpisode(match[3])
+        : match[2]
+          ? normalizeRequestedEpisode(match[2])
+          : null
     };
   }
 
@@ -1343,14 +1348,34 @@ async function extractStreamsFromAnimePath(animePath, requestedEpisode) {
 
 async function getStreams(id, type, season, episode, providerContext = null) {
   try {
-    const lookup = resolveLookupRequest(id, season, episode, providerContext);
+    let lookup = resolveLookupRequest(id, season, episode, providerContext);
     if (!lookup) return [];
+    const normalizedLookupType = String(type || "").toLowerCase();
+
+    // Seasonal TMDB S>=2 (tv/series/anime): IMDb FIRST with same season/episode.
+    // Riassegna lookup a IMDb e prosegue sulla pipeline originale unica.
+    // Metadata failure -> []. La validazione seasonal sotto impedisce fallback TMDB.
+    if (isSeasonalTvLookup(lookup, normalizedLookupType)) {
+      const imdbId = await resolveTmdbTvToImdb(lookup.externalId);
+      if (!imdbId) return [];
+      lookup = {
+        provider: "imdb",
+        externalId: imdbId,
+        season: lookup.season,
+        episode: lookup.episode
+      };
+    }
 
     let mappingPayload = await fetchMappingPayload(lookup, providerContext);
     let animePaths = extractAnimeUnityPaths(mappingPayload);
 
+    // Seasonal IMDb S>=2 (converted + direct): validate, NO TMDB fallback.
+    if (isSeasonalImdbLookup(lookup, normalizedLookupType)) {
+      if (!isValidSeasonalImdbMapping(mappingPayload, lookup)) return [];
+      if (animePaths.length === 0) return [];
+    } else if (animePaths.length === 0 && String(lookup.provider || "").toLowerCase() === "imdb") {
     // IMDb mappings may be missing while TMDB mapping exists: retry with TMDB id.
-    if (animePaths.length === 0 && String(lookup.provider || "").toLowerCase() === "imdb") {
+    // Preserved for S1/movies/special0 only (non-seasonal above).
       const tmdbFromContext = /^\d+$/.test(String(providerContext?.tmdbId || "").trim())
         ? String(providerContext.tmdbId).trim()
         : null;

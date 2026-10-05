@@ -390,6 +390,275 @@ var require_quality_helper = __commonJS({
   }
 });
 
+// src/anime_mapping_helper.js
+var require_anime_mapping_helper = __commonJS({
+  "src/anime_mapping_helper.js"(exports2, module2) {
+    "use strict";
+    var { fetchWithTimeout: fetchWithTimeout2 } = require_fetch_helper();
+    var TMDB_API_KEY_DEFAULT = "68e094699525b18a70bab2f86b1fa706";
+    var TMDB_EXTERNAL_IDS_TIMEOUT_DEFAULT = 5e3;
+    var TMDB_EXTERNAL_IDS_MIN_TIMEOUT = 10;
+    var TMDB_EXTERNAL_IDS_MAX_TIMEOUT = 3e4;
+    function getTmdbApiKey(explicit) {
+      try {
+        if (typeof explicit === "string" && explicit.trim()) return explicit.trim();
+      } catch (_) {
+      }
+      return TMDB_API_KEY_DEFAULT;
+    }
+    function getTmdbResolveTimeout(explicit) {
+      try {
+        if (typeof explicit !== "undefined" && explicit !== null && explicit !== "") {
+          var p = Number.parseInt(String(explicit), 10);
+          if (Number.isFinite(p) && p > 0) {
+            if (p < TMDB_EXTERNAL_IDS_MIN_TIMEOUT) return TMDB_EXTERNAL_IDS_MIN_TIMEOUT;
+            if (p > TMDB_EXTERNAL_IDS_MAX_TIMEOUT) return TMDB_EXTERNAL_IDS_MAX_TIMEOUT;
+            return p;
+          }
+        }
+      } catch (_) {
+      }
+      try {
+        var s = null;
+        if (typeof globalThis !== "undefined" && globalThis && typeof globalThis.SCRAPER_SETTINGS === "object" && globalThis.SCRAPER_SETTINGS) {
+          s = globalThis.SCRAPER_SETTINGS;
+        }
+        if (s) {
+          var raw = s.animeMappingTmdbTimeout;
+          if (typeof raw !== "undefined" && raw !== null && raw !== "") {
+            var q = Number.parseInt(String(raw), 10);
+            if (Number.isFinite(q) && q > 0) {
+              if (q < TMDB_EXTERNAL_IDS_MIN_TIMEOUT) return TMDB_EXTERNAL_IDS_MIN_TIMEOUT;
+              if (q > TMDB_EXTERNAL_IDS_MAX_TIMEOUT) return TMDB_EXTERNAL_IDS_MAX_TIMEOUT;
+              return q;
+            }
+          }
+        }
+      } catch (_) {
+      }
+      return TMDB_EXTERNAL_IDS_TIMEOUT_DEFAULT;
+    }
+    function normalizeSeasonValue(value) {
+      try {
+        var p = Number.parseInt(String(value), 10);
+        if (Number.isInteger(p) && p >= 0) return p;
+      } catch (_) {
+      }
+      return null;
+    }
+    function normalizeEpisodeValue(value) {
+      try {
+        var p = Number.parseInt(String(value), 10);
+        if (Number.isInteger(p) && p > 0) return p;
+      } catch (_) {
+      }
+      return null;
+    }
+    function normalizeLookupType(type) {
+      return String(type || "").trim().toLowerCase();
+    }
+    function isSeasonalTvLookup2(lookup, type) {
+      try {
+        if (!lookup) return false;
+        if (String(lookup.provider || "").toLowerCase() !== "tmdb") return false;
+        var t = normalizeLookupType(type);
+        if (t !== "tv" && t !== "series" && t !== "anime") return false;
+        var s = normalizeSeasonValue(lookup.season);
+        return Number.isInteger(s) && s >= 2;
+      } catch (_) {
+        return false;
+      }
+    }
+    function isSeasonalImdbLookup2(lookup, type) {
+      try {
+        if (!lookup) return false;
+        if (String(lookup.provider || "").toLowerCase() !== "imdb") return false;
+        var t = normalizeLookupType(type);
+        if (t !== "tv" && t !== "series" && t !== "anime") return false;
+        var s = normalizeSeasonValue(lookup.season);
+        return Number.isInteger(s) && s >= 2;
+      } catch (_) {
+        return false;
+      }
+    }
+    function getRequestedEcho(payload) {
+      var out = { season: null, episode: null, hasSeason: false, hasEpisode: false };
+      try {
+        if (!payload || typeof payload !== "object") return out;
+        var r = payload.requested;
+        if (!r || typeof r !== "object") return out;
+        var seasonRaw = null;
+        var episodeRaw = null;
+        var hasSeason = false;
+        var hasEpisode = false;
+        if (Object.prototype.hasOwnProperty.call(r, "season")) {
+          seasonRaw = r.season;
+          hasSeason = true;
+        } else if (Object.prototype.hasOwnProperty.call(r, "s")) {
+          seasonRaw = r.s;
+          hasSeason = true;
+        }
+        if (Object.prototype.hasOwnProperty.call(r, "episode")) {
+          episodeRaw = r.episode;
+          hasEpisode = true;
+        } else if (Object.prototype.hasOwnProperty.call(r, "ep")) {
+          episodeRaw = r.ep;
+          hasEpisode = true;
+        }
+        if (hasSeason && (seasonRaw === "" || seasonRaw === null || typeof seasonRaw === "undefined")) hasSeason = false;
+        if (hasEpisode && (episodeRaw === "" || episodeRaw === null || typeof episodeRaw === "undefined")) hasEpisode = false;
+        out.season = hasSeason ? normalizeSeasonValue(seasonRaw) : null;
+        out.episode = hasEpisode ? normalizeEpisodeValue(episodeRaw) : null;
+        out.hasSeason = hasSeason;
+        out.hasEpisode = hasEpisode;
+      } catch (_) {
+      }
+      return out;
+    }
+    function getMatchedBy(payload) {
+      try {
+        if (!payload || typeof payload !== "object") return { present: false, value: void 0 };
+        var candidates = [];
+        if (payload.mappings && typeof payload.mappings === "object") {
+          if (payload.mappings.tmdb_episode && typeof payload.mappings.tmdb_episode === "object") candidates.push(payload.mappings.tmdb_episode);
+          if (payload.mappings.tmdbEpisode && typeof payload.mappings.tmdbEpisode === "object") candidates.push(payload.mappings.tmdbEpisode);
+        }
+        if (payload.tmdb_episode && typeof payload.tmdb_episode === "object") candidates.push(payload.tmdb_episode);
+        if (payload.tmdbEpisode && typeof payload.tmdbEpisode === "object") candidates.push(payload.tmdbEpisode);
+        for (var i = 0; i < candidates.length; i += 1) {
+          var c = candidates[i];
+          if (c && Object.prototype.hasOwnProperty.call(c, "matchedBy")) return { present: true, value: c.matchedBy };
+        }
+      } catch (_) {
+      }
+      return { present: false, value: void 0 };
+    }
+    function hasPositiveMatchedBy(payload) {
+      try {
+        var mb = getMatchedBy(payload);
+        if (!mb.present) return false;
+        var v = mb.value;
+        if (v === null || typeof v === "undefined") return false;
+        if (typeof v === "boolean") return v;
+        var text = String(v).trim();
+        if (!text) return false;
+        var lower = text.toLowerCase();
+        if (lower === "null" || lower === "none" || lower === "false") return false;
+        return true;
+      } catch (_) {
+        return false;
+      }
+    }
+    function getKitsuEpisode(payload) {
+      try {
+        if (!payload || typeof payload !== "object") return null;
+        var direct = payload.kitsu && typeof payload.kitsu === "object" ? payload.kitsu.episode : null;
+        return normalizeEpisodeValue(direct);
+      } catch (_) {
+      }
+      return null;
+    }
+    function isValidSeasonalImdbMapping2(payload, lookup) {
+      try {
+        if (!payload || typeof payload !== "object") return false;
+        if (!lookup) return false;
+        var lookupSeason = normalizeSeasonValue(lookup.season);
+        var lookupEpisode = normalizeEpisodeValue(lookup.episode) || 1;
+        var echo = getRequestedEcho(payload);
+        if (echo.hasSeason && echo.season !== null && lookupSeason !== null && echo.season !== lookupSeason) return false;
+        if (echo.hasSeason && echo.season === null) return false;
+        if (echo.hasEpisode && echo.episode !== null && echo.episode !== lookupEpisode) return false;
+        if (echo.hasEpisode && echo.episode === null) return false;
+        var mb = getMatchedBy(payload);
+        if (mb.present && (mb.value === null || typeof mb.value === "undefined")) {
+          if (!getKitsuEpisode(payload)) return false;
+        }
+        if (!getKitsuEpisode(payload) && !hasPositiveMatchedBy(payload)) return false;
+        return true;
+      } catch (_) {
+        return false;
+      }
+    }
+    function fetchJsonWithDeadline(url, options) {
+      return __async(this, null, function* () {
+        var opts = options || {};
+        var timeoutMs = getTmdbResolveTimeout(opts.timeoutMs);
+        var impl = opts && typeof opts.fetchWithTimeoutImpl === "function" ? opts.fetchWithTimeoutImpl : fetchWithTimeout2;
+        if (typeof setTimeout !== "function" || typeof clearTimeout !== "function") {
+          try {
+            var fallback = yield impl(url, { timeout: timeoutMs });
+            if (!fallback || !fallback.ok) return null;
+            return yield fallback.json();
+          } catch (_) {
+            return null;
+          }
+        }
+        var timer = null;
+        var timeoutPromise = new Promise(function(_, reject) {
+          timer = setTimeout(function() {
+            reject(new Error("Request timed out after " + timeoutMs + "ms"));
+          }, timeoutMs);
+        });
+        var task = (function() {
+          return __async(this, null, function* () {
+            var response = yield impl(url, { timeout: timeoutMs });
+            if (!response || !response.ok) return null;
+            return yield response.json();
+          });
+        })();
+        if (task && typeof task.catch === "function") task.catch(function() {
+        });
+        try {
+          return yield Promise.race([task, timeoutPromise]);
+        } catch (_) {
+          return null;
+        } finally {
+          try {
+            if (timer !== null) clearTimeout(timer);
+          } catch (_) {
+          }
+        }
+      });
+    }
+    function resolveTmdbTvToImdb2(tmdbId, options) {
+      return __async(this, null, function* () {
+        try {
+          var text = String(tmdbId == null ? "" : tmdbId).trim();
+          if (!/^\d+$/.test(text)) return null;
+          var opts = options || {};
+          var apiKey = getTmdbApiKey(opts.apiKey);
+          var url = "https://api.themoviedb.org/3/tv/" + encodeURIComponent(text) + "/external_ids?api_key=" + encodeURIComponent(apiKey);
+          var data = yield fetchJsonWithDeadline(url, opts);
+          if (!data || typeof data !== "object") return null;
+          var imdbText = String(data.imdb_id || "").trim();
+          if (/^tt\d+$/.test(imdbText)) return imdbText;
+          return null;
+        } catch (_) {
+          try {
+            console.warn("[AnimeMapping] Content unavailable");
+          } catch (_2) {
+          }
+          return null;
+        }
+      });
+    }
+    module2.exports = {
+      TMDB_API_KEY_DEFAULT,
+      TMDB_EXTERNAL_IDS_TIMEOUT_DEFAULT,
+      getTmdbApiKey,
+      getTmdbResolveTimeout,
+      isSeasonalTvLookup: isSeasonalTvLookup2,
+      isSeasonalImdbLookup: isSeasonalImdbLookup2,
+      getRequestedEcho,
+      getMatchedBy,
+      getKitsuEpisode,
+      isValidSeasonalImdbMapping: isValidSeasonalImdbMapping2,
+      fetchJsonWithDeadline,
+      resolveTmdbTvToImdb: resolveTmdbTvToImdb2
+    };
+  }
+});
+
 // src/extractors/common.js
 var require_common = __commonJS({
   "src/extractors/common.js"(exports2, module2) {
@@ -448,6 +717,7 @@ var require_common = __commonJS({
 var { formatStream } = require_formatter();
 var { checkQualityFromPlaylist } = require_quality_helper();
 var { createTimeoutSignal } = require_fetch_helper();
+var { resolveTmdbTvToImdb, isSeasonalTvLookup, isSeasonalImdbLookup, isValidSeasonalImdbMapping } = require_anime_mapping_helper();
 var { getProxiedUrl } = require_common();
 function getSaturnBaseUrl() {
   return "https://www.animesaturn.net";
@@ -1268,13 +1538,13 @@ function parseExplicitRequestId(rawId) {
       episodeFromId: match[3] ? normalizeRequestedEpisode(match[3]) : match[2] ? normalizeRequestedEpisode(match[2]) : null
     };
   }
-  match = value.match(/^(tt\d+)$/i);
+  match = value.match(/^(tt\d+)(?::(\d+))?(?::(\d+))?$/i);
   if (match) {
     return {
       provider: "imdb",
       externalId: match[1],
-      seasonFromId: null,
-      episodeFromId: null
+      seasonFromId: match[3] ? normalizeRequestedSeason(match[2]) : null,
+      episodeFromId: match[3] ? normalizeRequestedEpisode(match[3]) : match[2] ? normalizeRequestedEpisode(match[2]) : null
     };
   }
   match = value.match(/^(\d+)$/);
@@ -1443,11 +1713,25 @@ function getStreams(id, type, season, episode, providerContext = null) {
   return __async(this, null, function* () {
     var _a;
     try {
-      const lookup = resolveLookupRequest(id, season, episode, providerContext);
+      let lookup = resolveLookupRequest(id, season, episode, providerContext);
       if (!lookup) return [];
+      const normalizedLookupType = String(type || "").toLowerCase();
+      if (isSeasonalTvLookup(lookup, normalizedLookupType)) {
+        const imdbId = yield resolveTmdbTvToImdb(lookup.externalId);
+        if (!imdbId) return [];
+        lookup = {
+          provider: "imdb",
+          externalId: imdbId,
+          season: lookup.season,
+          episode: lookup.episode
+        };
+      }
       let mappingPayload = yield fetchMappingPayload(lookup, providerContext);
       let animePaths = extractAnimeSaturnPaths(mappingPayload);
-      if (animePaths.length === 0 && String(lookup.provider || "").toLowerCase() === "imdb") {
+      if (isSeasonalImdbLookup(lookup, normalizedLookupType)) {
+        if (!isValidSeasonalImdbMapping(mappingPayload, lookup)) return [];
+        if (animePaths.length === 0) return [];
+      } else if (animePaths.length === 0 && String(lookup.provider || "").toLowerCase() === "imdb") {
         const tmdbFromContext = /^\d+$/.test(String((providerContext == null ? void 0 : providerContext.tmdbId) || "").trim()) ? String(providerContext.tmdbId).trim() : null;
         const tmdbFromPayload = extractTmdbIdFromMappingPayload(mappingPayload);
         const fallbackTmdbId = tmdbFromContext || tmdbFromPayload;

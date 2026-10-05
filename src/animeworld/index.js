@@ -3,6 +3,7 @@
 const { formatStream } = require("../formatter.js");
 const { checkQualityFromPlaylist } = require("../quality_helper.js");
 const { createTimeoutSignal } = require("../fetch_helper.js");
+const { resolveTmdbTvToImdb, isSeasonalTvLookup, isSeasonalImdbLookup, isValidSeasonalImdbMapping } = require("../anime_mapping_helper.js");
 
 function getWorldBaseUrl() {
   return "https://www.animeworld.ac";
@@ -801,13 +802,17 @@ function parseExplicitRequestId(rawId) {
     };
   }
 
-  match = value.match(/^(tt\d+)$/i);
+  match = value.match(/^(tt\d+)(?::(\d+))?(?::(\d+))?$/i);
   if (match) {
     return {
       provider: "imdb",
       externalId: match[1],
-      seasonFromId: null,
-      episodeFromId: null
+      seasonFromId: match[3] ? normalizeRequestedSeason(match[2]) : null,
+      episodeFromId: match[3]
+        ? normalizeRequestedEpisode(match[3])
+        : match[2]
+          ? normalizeRequestedEpisode(match[2])
+          : null
     };
   }
 
@@ -1029,13 +1034,28 @@ async function mapLimit(values, limit, mapper) {
 
 async function getStreams(id, type, season, episode, providerContext = null) {
   try {
-    const lookup = resolveLookupRequest(id, season, episode, providerContext);
+    let lookup = resolveLookupRequest(id, season, episode, providerContext);
     if (!lookup) return [];
+    const normalizedLookupType = String(type || "").toLowerCase();
+
+    if (isSeasonalTvLookup(lookup, normalizedLookupType)) {
+      const imdbId = await resolveTmdbTvToImdb(lookup.externalId);
+      if (!imdbId) return [];
+      lookup = {
+        provider: "imdb",
+        externalId: imdbId,
+        season: lookup.season,
+        episode: lookup.episode
+      };
+    }
 
     let mappingPayload = await fetchMappingPayload(lookup, providerContext);
     let animePaths = extractAnimeWorldPaths(mappingPayload);
 
-    if (animePaths.length === 0 && String(lookup.provider || "").toLowerCase() === "imdb") {
+    if (isSeasonalImdbLookup(lookup, normalizedLookupType)) {
+      if (!isValidSeasonalImdbMapping(mappingPayload, lookup)) return [];
+      if (animePaths.length === 0) return [];
+    } else if (animePaths.length === 0 && String(lookup.provider || "").toLowerCase() === "imdb") {
       const tmdbFromContext = /^\d+$/.test(String(providerContext?.tmdbId || "").trim())
         ? String(providerContext.tmdbId).trim()
         : null;
