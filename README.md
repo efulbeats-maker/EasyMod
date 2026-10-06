@@ -1,6 +1,6 @@
 # EasyMod
 
-Plugin Nuvio con 6 provider italiani per Film, Serie TV e Anime.
+Plugin Nuvio con 8 provider italiani per Film, Serie TV e Anime.
 
 ## Provider supportati
 
@@ -10,8 +10,15 @@ Plugin Nuvio con 6 provider italiani per Film, Serie TV e Anime.
 - **AnimeSaturn** (Anime)
 - **StreamingCommunity** (Film e Serie TV)
 - **AltadefinizioneStreaming** (Film e Serie TV)
+- **Cineblog001** (Film e Serie TV)
+- **AltadefinizioneX** (Film e Serie TV)
 
-L'elenco corrisponde ai 6 scraper dichiarati in `manifest.json`.
+L'elenco corrisponde agli 8 scraper dichiarati in `manifest.json`.
+
+> Nota: Cineblog001 e AltadefinizioneX verificano i titoli sui rispettivi
+> siti, ma entrambi risolvono lo stream tramite lo stesso backend Vixsrc
+> (stesso resolver di StreamingCommunity), quindi non sono fonti
+> indipendenti: se il backend non risponde, entrambi restituiscono `[]`.
 
 ## Installazione su Nuvio
 
@@ -37,13 +44,13 @@ npm install
 node build.js --nuvio
 ```
 
-Variante minificata (stesse 6 voci del manifest):
+Variante minificata (stesse 8 voci del manifest):
 
 ```bash
 node build.js --nuvio --minify
 ```
 
-La build genera solo i bundle dei 6 scraper del manifest.
+La build genera solo i bundle degli 8 scraper del manifest.
 
 ## Test
 
@@ -55,7 +62,7 @@ npm test
 Equivalente esplicito:
 
 ```bash
-node --test tests/nuvio-plugin.test.js tests/nuvio-bundles.test.js tests/anime-seasonal-imdb.test.js tests/anime-frieren-bundle.test.js
+node --test tests/nuvio-plugin.test.js tests/nuvio-bundles.test.js tests/anime-seasonal-imdb.test.js tests/anime-frieren-bundle.test.js tests/cineblog001.test.js tests/altadefinizionex.test.js
 ```
 
 I test sono offline con fetch simulata (nessuna richiesta live streaming).

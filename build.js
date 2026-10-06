@@ -1,6 +1,6 @@
 'use strict';
-// EasyMod staging build: SOLO plugin Nuvio (6 scraper da manifest).
-// Default e --nuvio costruiscono gli stessi 6 bundle. Nessuna funzione
+// EasyMod staging build: SOLO plugin Nuvio (8 scraper da manifest).
+// Default e --nuvio costruiscono gli stessi 8 bundle. Nessuna funzione
 // aggregator/server (no index bundle, no transpile, no Stremio/Docker).
 // Target/format/platform preservati: es2016, cjs, neutral.
 const esbuild = require('esbuild');
@@ -16,7 +16,9 @@ const NUVIO_SCRAPERS = [
   'animeworld',
   'animesaturn',
   'streamingcommunity',
-  'altadefinizionestreaming'
+  'altadefinizionestreaming',
+  'cineblog001',
+  'altadefinizionex'
 ];
 const NUVIO_ENTRY_OVERRIDE = {
   guardoserie: path.join(SRC_DIR, 'guardoserie', 'nuvio.js')
@@ -24,7 +26,7 @@ const NUVIO_ENTRY_OVERRIDE = {
 const NUVIO_EXTERNAL = ['undici', 'fs', 'path', 'https', 'http', 'http2', 'url', 'crypto', 'util', 'zlib', 'stream', 'events', 'assert', 'sql.js', 'puppeteer-extra', 'puppeteer-extra-plugin-stealth', 'axios', 'child_process'];
 
 async function buildNuvioProviders(minify = false) {
-  console.log('Building Nuvio plugin providers (6 scrapers only)...');
+  console.log('Building Nuvio plugin providers (8 scrapers only)...');
   if (!fs.existsSync(SRC_DIR)) {
     throw new Error('Src directory not found!');
   }
@@ -58,13 +60,13 @@ async function buildNuvioProviders(minify = false) {
       throw new Error(`Failed to build (nuvio) ${provider}: ${e && e.message ? e.message : e}`);
     }
   }
-  console.log('Nuvio build done: 6 plugin bundles only.');
+  console.log('Nuvio build done: 8 plugin bundles only.');
 }
 
 async function build() {
   const args = process.argv.slice(2);
   const shouldMinify = args.includes('--minify');
-  // Default e --nuvio: stesso output plugin-only (6 bundle).
+  // Default e --nuvio: stesso output plugin-only (8 bundle).
   await buildNuvioProviders(shouldMinify);
 }
 

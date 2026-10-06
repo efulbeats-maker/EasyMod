@@ -13,6 +13,8 @@ const vm = require('node:vm');
 const HELPER_PATH = path.join(__dirname, '..', 'src', 'fetch_helper.js');
 const SC_PATH = path.join(__dirname, '..', 'src', 'streamingcommunity', 'index.js');
 const ALTA_PATH = path.join(__dirname, '..', 'src', 'altadefinizionestreaming', 'index.js');
+const CINE_PATH = path.join(__dirname, '..', 'src', 'cineblog001', 'index.js');
+const ADX_PATH = path.join(__dirname, '..', 'src', 'altadefinizionex', 'index.js');
 
 function loadHelperInSandbox({ withAbort = true, fetchImpl } = {}) {
   const src = fs.readFileSync(HELPER_PATH, 'utf8');
@@ -214,10 +216,12 @@ describe('dispatcher handling (Nuvio client only)', () => {
     assert.equal(typeof helper.fetchWithTimeout, 'function');
   });
 
-  it('providers route streamingcommunity/altadefinizione fetches through fetchWithTimeout', () => {
+  it('providers route streamingcommunity/altadefinizione/cineblog001/altadefinizionex fetches through fetchWithTimeout', () => {
     const sc = fs.readFileSync(SC_PATH, 'utf8');
     const alta = fs.readFileSync(ALTA_PATH, 'utf8');
-    for (const [name, src] of [['streamingcommunity', sc], ['altadefinizione', alta]]) {
+    const cine = fs.readFileSync(CINE_PATH, 'utf8');
+    const adx = fs.readFileSync(ADX_PATH, 'utf8');
+    for (const [name, src] of [['streamingcommunity', sc], ['altadefinizione', alta], ['cineblog001', cine], ['altadefinizionex', adx]]) {
       assert.ok(
         src.includes('fetchWithTimeout'),
         `${name}: must use fetchWithTimeout`
@@ -231,6 +235,20 @@ describe('dispatcher handling (Nuvio client only)', () => {
       sc.includes('dispatcher: proxyAgent'),
       'streamingcommunity must keep passing the server proxy dispatcher through the helper'
     );
+    for (const [name, src] of [['cineblog001', cine], ['altadefinizionex', adx]]) {
+      assert.ok(
+        src.includes('streamingcommunity/index'),
+        `${name}: must reuse the shared vixsrc resolver, no new extractor`
+      );
+      assert.ok(
+        src.includes('append_to_response=external_ids'),
+        `${name}: IMDb must come from external_ids`
+      );
+      assert.ok(
+        src.includes('new URL('),
+        `${name}: host allowlist via URL hostname`
+      );
+    }
   });
 
   it('timeout error omits URL and secrets (task1 secret-leak fix)', async () => {
@@ -245,6 +263,102 @@ describe('dispatcher handling (Nuvio client only)', () => {
     assert.ok(!String(err && err.message).includes('ABC'), 'must not leak token');
     assert.ok(!String(err && err.message).includes('api_password'), 'must not leak param name with secret');
     assert.ok(!String(err && err.message).includes(secretUrl), 'must not embed request URL');
+  });
+});
+
+describe('cineblog001/altadefinizionex positive chain (mock integrale, sorgenti)', () => {
+  // Catena reale mockata: TMDB find+detail, search/dettaglio sito, resolver
+  // streamingcommunity condiviso (stub a livello modulo come nei test provider).
+  const FILM_IMDB = 'tt36429458';
+  const TV_IMDB = 'tt36849871';
+
+  function scFixture() {
+    return {
+      name: '📡 StreamingCommunity',
+      title: '📁 Doing Life | 🇮🇹',
+      originalTitle: 'Doing Life',
+      url: 'https://cromosino.space/playlist/214325.m3u8?b=1&lang=it',
+      easyProxySourceUrl: 'https://cromosino.space/embed/214325?lang=en&skin=vixsrc',
+      quality: '720p',
+      qualityTag: '💿 HD',
+      language: '🇮🇹',
+      type: 'direct',
+      headers: { 'User-Agent': 'UA-MOCK', Referer: 'https://cromosino.space/embed/214325' },
+      behaviorHints: { notWebReady: false },
+      provider: 'streamingcommunity'
+    };
+  }
+
+  let realFetch;
+  let scMod;
+  let origGetStreams;
+
+  beforeEach(() => {
+    realFetch = globalThis.fetch;
+    delete require.cache[require.resolve(CINE_PATH)];
+    delete require.cache[require.resolve(ADX_PATH)];
+    scMod = require(SC_PATH);
+    origGetStreams = scMod.getStreams;
+    scMod.getStreams = async () => [scFixture()];
+  });
+
+  afterEach(() => {
+    if (typeof realFetch === 'undefined') delete globalThis.fetch;
+    else globalThis.fetch = realFetch;
+    if (scMod && origGetStreams) scMod.getStreams = origGetStreams;
+  });
+
+  function mockChain() {
+    const prev = globalThis.fetch;
+    globalThis.fetch = async (url, opts = {}) => {
+      const u = String(url);
+      if (u.includes('api.themoviedb.org/3/find/')) {
+        const m = u.match(/find\/(tt\d+)/i);
+        const imdb = m ? m[1] : '';
+        if (imdb === FILM_IMDB) return { ok: true, status: 200, json: async () => ({ movie_results: [{ id: 1458857 }], tv_results: [] }), text: async () => '' };
+        if (imdb === TV_IMDB) return { ok: true, status: 200, json: async () => ({ movie_results: [], tv_results: [{ id: 290856 }] }), text: async () => '' };
+        return { ok: true, status: 200, json: async () => ({ movie_results: [], tv_results: [] }), text: async () => '' };
+      }
+      if (u.includes('/3/movie/1458857')) {
+        return { ok: true, status: 200, json: async () => ({ title: 'Doing Life', original_title: 'Doing Life', release_date: '2026-05-01', external_ids: { imdb_id: FILM_IMDB } }), text: async () => '' };
+      }
+      if (u.includes('/3/tv/290856')) {
+        return { ok: true, status: 200, json: async () => ({ name: 'Marshals', original_name: 'Marshals', first_air_date: '2026-03-01', external_ids: { imdb_id: TV_IMDB } }), text: async () => '' };
+      }
+      if (u.includes('cineblog001.tattoo') && (u.includes('do=search') || u.includes('subaction=search'))) {
+        return { ok: true, status: 200, json: async () => ({}), text: async () => '<article class="short block-list"><div class="short-main"><h3 class="story-heading"><a href="https://cineblog001.tattoo/cb01-streaming/35054-doing-life-streaming-cb01.html">Doing Life streaming [ITA] [HD] (2026)</a></h3></div></article>' };
+      }
+      if (u.includes('cineblog001.tattoo/cb01-streaming/')) {
+        return { ok: true, status: 200, json: async () => ({}), text: async () => `<html><body><script>var imdb = '${FILM_IMDB}';var SERIES = 0;</script><iframe id="vidxgo-player" src=""></iframe><script>iframe.src = 'https://vixsrc.to/movie/${FILM_IMDB}?lang=it';</script></body></html>` };
+      }
+      if (u === 'https://altadefinizionex.surf/') {
+        return { ok: true, status: 200, json: async () => ({}), text: async () => '<div class="col"><div class="movie" data-imdb="7.3" data-year="2026" data-link="https://altadefinizionex.surf/drammatico/35054-doing-life-streaming.html"><div class="movie-info"><h2 class="movie-title"><a href="https://altadefinizionex.surf/drammatico/35054-doing-life-streaming.html">Doing Life</a></h2></div></div></div>' };
+      }
+      if (u.startsWith('https://altadefinizionex.surf/')) {
+        return { ok: true, status: 200, json: async () => ({}), text: async () => `<html><body><iframe id="dle-player" src="https://vixsrc.to/movie/${FILM_IMDB}?lang=it"></iframe><div class="movie_entry-details"><div class="row"><div class="col-auto label-text">Anno:</div><div class="col-auto">2026</div></div></div></body></html>` };
+      }
+      return prev ? prev(url, opts) : { ok: false, status: 404, json: async () => ({}), text: async () => '' };
+    };
+  }
+
+  it('cineblog001 film: catena mock => 1 stream rietichettato', async () => {
+    mockChain();
+    delete require.cache[require.resolve(CINE_PATH)];
+    const api = require(CINE_PATH);
+    const out = await api.getStreams(FILM_IMDB, 'movie', 1, 1);
+    assert.equal(out.length, 1);
+    assert.ok(out[0].name.includes('Cineblog'), out[0].name);
+    assert.ok(String(out[0].url).includes('cromosino.space'), out[0].url);
+  });
+
+  it('altadefinizionex film: catena mock => 1 stream rietichettato', async () => {
+    mockChain();
+    delete require.cache[require.resolve(ADX_PATH)];
+    const api = require(ADX_PATH);
+    const out = await api.getStreams(FILM_IMDB, 'movie', 1, 1);
+    assert.equal(out.length, 1);
+    assert.ok(out[0].name.includes('AltadefinizioneX'), out[0].name);
+    assert.ok(String(out[0].url).includes('cromosino.space'), out[0].url);
   });
 });
 

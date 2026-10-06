@@ -25,7 +25,9 @@ const NUVIO_SCRAPERS = [
   'animeworld',
   'animesaturn',
   'streamingcommunity',
-  'altadefinizionestreaming'
+  'altadefinizionestreaming',
+  'cineblog001',
+  'altadefinizionex'
 ];
 
 // Solo per classificare i tentativi registrati dallo stub (nessun require reale).
@@ -140,6 +142,8 @@ function sampleArgs(provider) {
   if (provider === 'guardoserie') return ['tt123', 'movie', 1, 1];
   if (provider === 'streamingcommunity') return ['tt0133093', 'movie', 1, 1];
   if (provider === 'altadefinizionestreaming') return ['tt0133093', 'movie', 1, 1];
+  if (provider === 'cineblog001') return ['tt36429458', 'movie', 1, 1];
+  if (provider === 'altadefinizionex') return ['tt36429458', 'movie', 1, 1];
   return ['kitsu:1', 'tv', 1, 1];
 }
 
@@ -164,11 +168,11 @@ function altaMockFetch(seen) {
 }
 
 describe('manifest JSON / filenames / exports (offline)', () => {
-  it('manifest valido con 6 scraper e file esistenti', () => {
+  it('manifest valido con 8 scraper e file esistenti', () => {
     const raw = fs.readFileSync(MANIFEST_PATH, 'utf8');
     const manifest = JSON.parse(raw);
     assert.ok(manifest.version, 'overall version presente');
-    assert.equal(manifest.scrapers.length, 6);
+    assert.equal(manifest.scrapers.length, 8);
     const byFile = {};
     for (const s of manifest.scrapers) {
       assert.ok(s.id && s.version && s.filename, 'scraper con id/version/filename');
@@ -182,7 +186,7 @@ describe('manifest JSON / filenames / exports (offline)', () => {
     }
   });
 
-  it('tutti e 6 i bundle esportano getStreams', () => {
+  it('tutti gli 8 bundle esportano getStreams', () => {
     for (const p of NUVIO_SCRAPERS) {
       const { api } = loadBundleInVM(path.join(PROVIDERS_DIR, `${p}.js`), { fetchImpl: throwingFetch, nuvio: true, requireStub: null });
       assert.equal(typeof api.getStreams, 'function', p + ' deve esportare getStreams');
@@ -402,6 +406,133 @@ describe('altadefinizione senza cookie hardcoded (algoritmo offline)', () => {
       }
     }
   });
+});
+
+describe('cineblog001/altadefinizionex bundle: catena reale mockata => 1 stream', () => {
+  // Stessi backend Vixsrc di StreamingCommunity: TMDB find+detail, search +
+  // dettaglio sito, API vixsrc, embed con token/expires, playlist #EXTM3U.
+  const FILM_IMDB = 'tt36429458';
+  const FILM_TMDB = '1458857';
+  const TV_IMDB = 'tt36849871';
+  const TV_TMDB = '290856';
+  const CINE_BASE = 'https://cineblog001.tattoo';
+  const ADX_BASE = 'https://altadefinizionex.surf';
+
+  function cineSearchHtml() {
+    return '<article class="short block-list"><div class="short-main">'
+      + '<h3 class="story-heading"><a href="https://cineblog001.tattoo/cb01-streaming/35054-doing-life-streaming-cb01.html">Doing Life streaming [ITA] [HD] (2026)</a></h3>'
+      + '</div></article>'
+      + '<article class="short block-list"><div class="short-main">'
+      + '<h3 class="story-heading"><a href="https://cineblog001.tattoo/cb01-streaming/33122-marshals-streaming-cb01.html">Marshals - Serie TV (2026)</a></h3>'
+      + '<div class="text-uppercase"><b>Serie TV/Crime</b></div>'
+      + '</div></article>';
+  }
+
+  function cineDetailHtml(serie) {
+    const imdb = serie ? TV_IMDB : FILM_IMDB;
+    return `<html><body><script>var imdb = '${imdb}';var SERIES = ${serie ? 1 : 0};</script>`
+      + '<iframe id="vidxgo-player" src=""></iframe>'
+      + `<script>iframe.src = 'https://vixsrc.to/movie/${imdb}?lang=it';</script></body></html>`;
+  }
+
+  function adxSearchHtml(serie) {
+    if (serie) {
+      return '<div class="col"><div class="movie" data-imdb="0.0" data-year="2026" '
+        + 'data-link="https://altadefinizionex.surf/serie-tv/33122-marshals-streaming.html">'
+        + '<div class="movie-info"><h2 class="movie-title">'
+        + '<a href="https://altadefinizionex.surf/serie-tv/33122-marshals-streaming.html">Marshals</a>'
+        + '</h2></div></div></div>';
+    }
+    return '<div class="col"><div class="movie" data-imdb="7.3" data-year="2026" '
+      + 'data-link="https://altadefinizionex.surf/drammatico/35054-doing-life-streaming.html">'
+      + '<div class="movie-info"><h2 class="movie-title">'
+      + '<a href="https://altadefinizionex.surf/drammatico/35054-doing-life-streaming.html">Doing Life</a>'
+      + '</h2></div></div></div>';
+  }
+
+  function adxDetailHtml(serie) {
+    if (serie) {
+      return `<html><body><script>(function(){ var imdb = '${TV_IMDB}'; iframe.src = 'https://vixsrc.to/tv/' + imdb; })();</script>`
+        + '<div class="movie_entry-details"><div class="row"><div class="col-auto label-text">Anno:</div>'
+        + '<div class="col-auto">2026</div></div></div></body></html>';
+    }
+    return `<html><body><iframe id="dle-player" src="https://vixsrc.to/movie/${FILM_IMDB}?lang=it"></iframe>`
+      + '<div class="movie_entry-details"><div class="row"><div class="col-auto label-text">Anno:</div>'
+      + '<div class="col-auto">2026</div></div></div></body></html>';
+  }
+
+  function chainFetch(seen) {
+    return async (url, opts = {}) => {
+      const u = String(url);
+      seen.push(u);
+      if (u.includes('api.themoviedb.org/3/find/')) {
+        const m = u.match(/find\/(tt\d+)/i);
+        const imdb = m ? m[1] : '';
+        if (imdb === FILM_IMDB) return { ok: true, status: 200, json: async () => ({ movie_results: [{ id: 1458857 }], tv_results: [] }), text: async () => '' };
+        if (imdb === TV_IMDB) return { ok: true, status: 200, json: async () => ({ movie_results: [], tv_results: [{ id: 290856 }] }), text: async () => '' };
+        return { ok: true, status: 200, json: async () => ({ movie_results: [], tv_results: [] }), text: async () => '' };
+      }
+      if (u.includes(`/3/movie/${FILM_TMDB}`)) {
+        return { ok: true, status: 200, json: async () => ({ title: 'Doing Life', original_title: 'Doing Life', release_date: '2026-05-01', external_ids: { imdb_id: FILM_IMDB } }), text: async () => '' };
+      }
+      if (u.includes(`/3/tv/${TV_TMDB}`)) {
+        return { ok: true, status: 200, json: async () => ({ name: 'Marshals', original_name: 'Marshals', first_air_date: '2026-03-01', external_ids: { imdb_id: TV_IMDB } }), text: async () => '' };
+      }
+      if (u.includes('cineblog001.tattoo') && (u.includes('do=search') || u.includes('subaction=search'))) {
+        return { ok: true, status: 200, json: async () => ({}), text: async () => cineSearchHtml() };
+      }
+      if (u.includes('cineblog001.tattoo/cb01-streaming/')) {
+        const serie = u.includes('marshals');
+        return { ok: true, status: 200, json: async () => ({}), text: async () => cineDetailHtml(serie) };
+      }
+      if (u === `${ADX_BASE}/`) {
+        const body = String((opts && opts.body) || '');
+        return { ok: true, status: 200, json: async () => ({}), text: async () => adxSearchHtml(body.includes('Marshals')) };
+      }
+      if (u.startsWith(`${ADX_BASE}/`)) {
+        return { ok: true, status: 200, json: async () => ({}), text: async () => adxDetailHtml(u.includes('/serie-tv/')) };
+      }
+      if (u.includes('streamingcommunityz.team/titles_it_sitemap.xml')) {
+        return { ok: false, status: 404, json: async () => ({}), text: async () => '' };
+      }
+      if (u.includes('/api/movie/') || u.includes('/api/tv/')) {
+        return { ok: true, status: 200, json: async () => ({ src: 'https://vixcloud.co/embed/214325?token=AAA' }), text: async () => '' };
+      }
+      if (u.includes('vixcloud.co/embed/') || u.includes('cromosino.space/embed/')) {
+        const html = "<html><body><script>var p={'token': 'AAA', 'expires': '999', url: 'https://vixcloud.co/playlist/214325?b=1'};</script></body></html>";
+        return { ok: true, status: 200, json: async () => ({}), text: async () => html };
+      }
+      if (u.includes('/playlist/')) {
+        const m3u = '#EXTM3U\n#EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID="audio",LANGUAGE="it",NAME="Italian"\n#EXT-X-STREAM-INF:BANDWIDTH=4000000,RESOLUTION=1280x720\nchunk.m3u8';
+        return { ok: true, status: 200, json: async () => ({}), text: async () => m3u };
+      }
+      if (u.includes('cromosino.space')) {
+        return { ok: false, status: 404, json: async () => ({}), text: async () => '' };
+      }
+      return { ok: false, status: 404, json: async () => ({}), text: async () => '' };
+    };
+  }
+
+  for (const p of ['cineblog001', 'altadefinizionex']) {
+    it(`${p} bundle film ${FILM_IMDB}: 1 stream con label provider`, async () => {
+      const seen = [];
+      const label = p === 'cineblog001' ? 'Cineblog' : 'AltadefinizioneX';
+      const { api } = loadBundleInVM(path.join(PROVIDERS_DIR, `${p}.js`), { fetchImpl: chainFetch(seen), nuvio: true, requireStub: null });
+      const out = await api.getStreams(FILM_IMDB, 'movie', 1, 1);
+      assert.equal(out.length, 1, `${p} film deve risolvere 1 stream, fetch: ${JSON.stringify(seen.slice(0, 8))}`);
+      assert.ok(String(out[0].name).includes(label), out[0].name);
+      assert.ok(String(out[0].url).includes('cromosino.space'), out[0].url);
+      assert.ok(String(out[0].url).includes('.m3u8'), out[0].url);
+    });
+
+    it(`${p} bundle serie ${TV_IMDB} S1E1: 1 stream con titolo episodio`, async () => {
+      const seen = [];
+      const { api } = loadBundleInVM(path.join(PROVIDERS_DIR, `${p}.js`), { fetchImpl: chainFetch(seen), nuvio: true, requireStub: null });
+      const out = await api.getStreams(TV_IMDB, 'series', 1, 1);
+      assert.equal(out.length, 1, `${p} serie deve risolvere 1 stream`);
+      assert.ok(String(out[0].title).includes('S01E01'), out[0].title);
+    });
+  }
 });
 
 describe('build --nuvio negativa: preload intercetta esbuild => exit nonzero, outputs invariati', () => {

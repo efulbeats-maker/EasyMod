@@ -1,12 +1,12 @@
 {
   "name": "easymod",
-  "version": "1.3.21",
-  "description": "Plugin Nuvio con 6 provider italiani per Film, Serie TV e Anime.",
+  "version": "1.3.22",
+  "description": "Plugin Nuvio con 8 provider italiani per Film, Serie TV e Anime.",
   "private": true,
   "license": "ISC",
   "type": "commonjs",
   "scripts": {
-    "test": "node --test tests/nuvio-plugin.test.js tests/nuvio-bundles.test.js tests/anime-seasonal-imdb.test.js tests/anime-frieren-bundle.test.js",
+    "test": "node --test tests/nuvio-plugin.test.js tests/nuvio-bundles.test.js tests/anime-seasonal-imdb.test.js tests/anime-frieren-bundle.test.js tests/cineblog001.test.js tests/altadefinizionex.test.js",
     "build": "node build.js",
     "build:nuvio": "node build.js --nuvio"
   },
