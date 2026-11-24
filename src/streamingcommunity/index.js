@@ -220,7 +220,9 @@ function extractMasterPlaylistFromEmbedHtml(html) {
   return {
     token: tokenMatch[1],
     expires: expiresMatch[1],
-    url: urlMatch[1]
+    url: urlMatch[1],
+    // h=1 on a non-FHD title makes the playlist answer 403
+    canPlayFHD: /window.canPlayFHDs*=s*true/i.test(html)
   };
 }
 
@@ -410,7 +412,7 @@ async function getStreams(id, type, season, episode, providerContext = null) {
 
       const [playlistRawUrl, existingQuery] = masterPlaylist.url.split('?');
       const urlWithExt = playlistRawUrl.endsWith('.m3u8') ? playlistRawUrl : `${playlistRawUrl}.m3u8`;
-      const queryParts = [existingQuery, `token=${encodeURIComponent(masterPlaylist.token)}`, `expires=${encodeURIComponent(masterPlaylist.expires)}`, 'h=1', 'lang=it'].filter(Boolean);
+      const queryParts = [existingQuery, `token=${encodeURIComponent(masterPlaylist.token)}`, `expires=${encodeURIComponent(masterPlaylist.expires)}`, masterPlaylist.canPlayFHD ? 'h=1' : null, 'lang=it'].filter(Boolean);
       const rawStreamUrl = `${urlWithExt}?${queryParts.join('&')}`;
       const streamUrl = rawStreamUrl.replace('vixcloud.co', 'cromosino.space').replace('vixsrc.to', 'cromosino.space');
       const cleanEmbedUrl = embedUrl.replace('vixcloud.co', 'cromosino.space').replace('vixsrc.to', 'cromosino.space');
