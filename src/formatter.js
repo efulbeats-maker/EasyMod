@@ -82,6 +82,22 @@ function normalizeEpisodeTemplate(value) {
         );
 }
 
+// Plain-text labels for the visible name/title (metadata fields keep their legacy values).
+function displayQuality(quality) {
+  const q = String(quality || '').trim();
+  if (/^(2160p|4k)$/i.test(q)) return '4K';
+  const m = q.match(/^(\d{3,4})p$/i);
+  return m ? `${m[1]}p` : '';
+}
+
+function displayLanguage(language) {
+  const l = String(language || '');
+  if (l.includes('🇯🇵') && l.includes('🇮🇹')) return 'SUB ITA';
+  if (l.includes('🇮🇹')) return 'ITA';
+  if (l.includes('🇯🇵')) return 'JPN';
+  return '';
+}
+
 function formatStream(stream, providerName) {
     // 1. Filter MixDrop (removed from shared formatter, handled in Stremio addon separately)
     // const server = (stream.server || "").toLowerCase();
@@ -103,7 +119,6 @@ function formatStream(stream, providerName) {
     const normalizedTitle = normalizeEpisodeTemplate(stream.title || 'Stream');
 
     // Format title with emoji
-    let title = `📁 ${normalizedTitle}`;
 
     // Extract language if not present
     let language = stream.language;
@@ -119,7 +134,7 @@ function formatStream(stream, providerName) {
 
     // Add details
     let details = [];
-    if (stream.size) details.push(`📦 ${stream.size}`);
+    if (stream.size) details.push(`💾 ${stream.size}`);
 
     const desc = details.join(' | ');
 
@@ -146,9 +161,6 @@ function formatStream(stream, providerName) {
     }
 
     // Add antenna emoji if provider exists
-    if (pName) {
-        pName = `📡 ${pName}`;
-    }
 
     // Move headers to behaviorHints if present, but keep original for compatibility.
     const behaviorHints = stream.behaviorHints && typeof stream.behaviorHints === 'object'
@@ -188,10 +200,10 @@ function formatStream(stream, providerName) {
         delete behaviorHints.notWebReady;
     }
 
-    const finalName = pName;
-    let finalTitle = `📁 ${normalizedTitle}`;
-    if (desc) finalTitle += ` | ${desc}`;
-    if (language) finalTitle += ` | ${language}`;
+    const finalName = [pName ? `🎬 ${pName}` : '', displayQuality(stream.quality)].filter(Boolean).join(' · ');
+    const langLabel = displayLanguage(language);
+    const showLang = langLabel && !normalizedTitle.toUpperCase().includes(langLabel);
+    const finalTitle = [normalizedTitle, showLang ? `${langLabel.startsWith('SUB') ? '💬' : '🗣️'} ${langLabel}` : '', desc].filter(Boolean).join(' · ');
     const playbackReferer = stream.referer || finalHeaders?.Referer || finalHeaders?.referer;
     const playbackUserAgent = stream.userAgent || finalHeaders?.['User-Agent'] || finalHeaders?.['user-agent'];
 

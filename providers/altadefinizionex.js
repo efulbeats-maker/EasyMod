@@ -219,6 +219,19 @@ var require_formatter = __commonJS({
         (_, season, episode) => `S${season.padStart(2, "0")}E${episode.padStart(2, "0")}`
       );
     }
+    function displayQuality(quality) {
+      const q = String(quality || "").trim();
+      if (/^(2160p|4k)$/i.test(q)) return "4K";
+      const m = q.match(/^(\d{3,4})p$/i);
+      return m ? `${m[1]}p` : "";
+    }
+    function displayLanguage(language) {
+      const l = String(language || "");
+      if (l.includes("\u{1F1EF}\u{1F1F5}") && l.includes("\u{1F1EE}\u{1F1F9}")) return "SUB ITA";
+      if (l.includes("\u{1F1EE}\u{1F1F9}")) return "ITA";
+      if (l.includes("\u{1F1EF}\u{1F1F5}")) return "JPN";
+      return "";
+    }
     function formatStream2(stream, providerName) {
       let quality = stream.quality || "";
       if (quality === "2160p") quality = "\u{1F525}4K UHD";
@@ -228,7 +241,6 @@ var require_formatter = __commonJS({
       else if (quality === "576p" || quality === "480p" || quality === "360p" || quality === "240p") quality = "\u{1F4A9} Low Quality";
       else if (!quality || ["auto", "unknown", "unknow"].includes(String(quality).toLowerCase())) quality = "\u{1F4BF} HD";
       const normalizedTitle = normalizeEpisodeTemplate(stream.title || "Stream");
-      let title = `\u{1F4C1} ${normalizedTitle}`;
       let language = stream.language;
       if (language === "Italian") {
         language = "\u{1F1EE}\u{1F1F9}";
@@ -240,7 +252,7 @@ var require_formatter = __commonJS({
         language = "";
       }
       let details = [];
-      if (stream.size) details.push(`\u{1F4E6} ${stream.size}`);
+      if (stream.size) details.push(`\u{1F4BE} ${stream.size}`);
       const desc = details.join(" | ");
       let pName = stream.name || stream.server || providerName;
       if (pName) {
@@ -248,9 +260,6 @@ var require_formatter = __commonJS({
       }
       if (pName === providerName) {
         pName = pName.charAt(0).toUpperCase() + pName.slice(1);
-      }
-      if (pName) {
-        pName = `\u{1F4E1} ${pName}`;
       }
       const behaviorHints = stream.behaviorHints && typeof stream.behaviorHints === "object" ? __spreadValues({}, stream.behaviorHints) : {};
       let finalHeaders = stream.headers;
@@ -278,10 +287,10 @@ var require_formatter = __commonJS({
       } else if (!providerExplicitNotWebReady) {
         delete behaviorHints.notWebReady;
       }
-      const finalName = pName;
-      let finalTitle = `\u{1F4C1} ${normalizedTitle}`;
-      if (desc) finalTitle += ` | ${desc}`;
-      if (language) finalTitle += ` | ${language}`;
+      const finalName = [pName ? `\u{1F3AC} ${pName}` : "", displayQuality(stream.quality)].filter(Boolean).join(" \xB7 ");
+      const langLabel = displayLanguage(language);
+      const showLang = langLabel && !normalizedTitle.toUpperCase().includes(langLabel);
+      const finalTitle = [normalizedTitle, showLang ? `${langLabel.startsWith("SUB") ? "\u{1F4AC}" : "\u{1F5E3}\uFE0F"} ${langLabel}` : "", desc].filter(Boolean).join(" \xB7 ");
       const playbackReferer = stream.referer || (finalHeaders == null ? void 0 : finalHeaders.Referer) || (finalHeaders == null ? void 0 : finalHeaders.referer);
       const playbackUserAgent = stream.userAgent || (finalHeaders == null ? void 0 : finalHeaders["User-Agent"]) || (finalHeaders == null ? void 0 : finalHeaders["user-agent"]);
       return __spreadProps(__spreadValues({}, stream), {
@@ -609,7 +618,9 @@ var require_streamingcommunity = __commonJS({
       return {
         token: tokenMatch[1],
         expires: expiresMatch[1],
-        url: urlMatch[1]
+        url: urlMatch[1],
+        // h=1 on a non-FHD title makes the playlist answer 403
+        canPlayFHD: /window.canPlayFHDs*=s*true/i.test(html)
       };
     }
     function getQualityFromName(qualityStr) {
@@ -781,7 +792,7 @@ var require_streamingcommunity = __commonJS({
             }
             const [playlistRawUrl, existingQuery] = masterPlaylist.url.split("?");
             const urlWithExt = playlistRawUrl.endsWith(".m3u8") ? playlistRawUrl : `${playlistRawUrl}.m3u8`;
-            const queryParts = [existingQuery, `token=${encodeURIComponent(masterPlaylist.token)}`, `expires=${encodeURIComponent(masterPlaylist.expires)}`, "h=1", "lang=it"].filter(Boolean);
+            const queryParts = [existingQuery, `token=${encodeURIComponent(masterPlaylist.token)}`, `expires=${encodeURIComponent(masterPlaylist.expires)}`, masterPlaylist.canPlayFHD ? "h=1" : null, "lang=it"].filter(Boolean);
             const rawStreamUrl = `${urlWithExt}?${queryParts.join("&")}`;
             const streamUrl = rawStreamUrl.replace("vixcloud.co", "cromosino.space").replace("vixsrc.to", "cromosino.space");
             const cleanEmbedUrl = embedUrl.replace("vixcloud.co", "cromosino.space").replace("vixsrc.to", "cromosino.space");
