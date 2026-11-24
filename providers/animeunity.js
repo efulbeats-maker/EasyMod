@@ -7588,6 +7588,108 @@ var require_extractors = __commonJS({
   }
 });
 
+// src/animeunity/api.js
+var require_api = __commonJS({
+  "src/animeunity/api.js"(exports2, module2) {
+    "use strict";
+    var { extractVixCloud: extractVixCloud2 } = require_extractors();
+    var { createTimeoutSignal: createTimeoutSignal2 } = require_fetch_helper();
+    var BASE_URL = "https://animeunity.cx";
+    var TIMEOUT = 1e4;
+    var USER_AGENT2 = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36";
+    var inertiaVersion = null;
+    function request(_0) {
+      return __async(this, arguments, function* (url, headers = {}) {
+        const t = createTimeoutSignal2(TIMEOUT);
+        try {
+          const res = yield fetch(url, {
+            headers: __spreadValues({
+              "User-Agent": USER_AGENT2,
+              Accept: "application/json, text/plain, */*",
+              Referer: `${BASE_URL}/`
+            }, headers),
+            signal: t.signal
+          });
+          if (!res.ok) throw new Error(`HTTP ${res.status} for ${url}`);
+          return res;
+        } finally {
+          if (typeof t.cleanup === "function") t.cleanup();
+        }
+      });
+    }
+    function getInertiaVersion() {
+      return __async(this, null, function* () {
+        if (inertiaVersion) return inertiaVersion;
+        const html = yield (yield request(BASE_URL, { Accept: "text/html" })).text();
+        const m = html.match(/data-page="([^"]+)"/);
+        if (!m) throw new Error("Inertia page data not found");
+        const json = m[1].replace(/&quot;/g, '"').replace(/&#0?39;/g, "'").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&amp;/g, "&");
+        inertiaVersion = JSON.parse(json).version || "";
+        return inertiaVersion;
+      });
+    }
+    function parseAnimePath(animePath) {
+      const m = String(animePath || "").match(/^\/anime\/(\d+)(?:-([^/?#]+))?/i);
+      return m ? { id: Number(m[1]), slug: m[2] || "" } : null;
+    }
+    function getEpisode(animeId, episodeNumber) {
+      return __async(this, null, function* () {
+        const wanted = Number(episodeNumber);
+        const start = Math.max(1, Math.floor(wanted));
+        const data = yield (yield request(`${BASE_URL}/api/anime/${animeId}/episodes?start=${start}`)).json();
+        const list = Array.isArray(data == null ? void 0 : data.episodes) ? data.episodes : [];
+        return list.find((e) => Number(e.number) === wanted) || (list.length === 1 ? list[0] : null);
+      });
+    }
+    function getEmbedUrl(animeId, slug, videoId) {
+      return __async(this, null, function* () {
+        var _a;
+        const version = yield getInertiaVersion();
+        const animeUrl = `${BASE_URL}/anime/${animeId}${slug ? `-${slug}` : ""}`;
+        const data = yield (yield request(`${animeUrl}/${videoId}`, {
+          "X-Inertia": "true",
+          "X-Inertia-Version": version,
+          "X-Inertia-Partial-Component": "Anime",
+          "X-Inertia-Partial-Data": "episode,embedUrl",
+          Referer: animeUrl
+        })).json();
+        return ((_a = data == null ? void 0 : data.props) == null ? void 0 : _a.embedUrl) || null;
+      });
+    }
+    function extractStreamsViaApi2(animePath, requestedEpisode, title = "AnimeUnity") {
+      return __async(this, null, function* () {
+        var _a;
+        const anime = parseAnimePath(animePath);
+        if (!anime) return [];
+        const episode = yield getEpisode(anime.id, requestedEpisode);
+        const videos = Array.isArray(episode == null ? void 0 : episode.videos) ? episode.videos : [];
+        const displayTitle = `${title} - Ep ${(_a = episode == null ? void 0 : episode.number) != null ? _a : requestedEpisode}`;
+        const perVideo = yield Promise.all(
+          videos.map((video) => __async(null, null, function* () {
+            try {
+              const embedUrl = yield getEmbedUrl(anime.id, anime.slug, video.id);
+              if (!embedUrl) return [];
+              const streams = (yield extractVixCloud2(embedUrl)) || [];
+              const language = String(video.language).toLowerCase() === "ita" ? "\u{1F1EE}\u{1F1F9}" : "\u{1F1EF}\u{1F1F5}";
+              return streams.map((s) => __spreadProps(__spreadValues({}, s), {
+                easyProxySourceUrl: embedUrl.replace("vixcloud.co", "cromosino.space"),
+                name: "AnimeUnity - VixCloud",
+                title: displayTitle,
+                language
+              }));
+            } catch (e) {
+              console.error("[AnimeUnity API] video failed:", e.message);
+              return [];
+            }
+          }))
+        );
+        return perVideo.flat();
+      });
+    }
+    module2.exports = { extractStreamsViaApi: extractStreamsViaApi2, parseAnimePath };
+  }
+});
+
 // src/formatter.js
 var require_formatter = __commonJS({
   "src/formatter.js"(exports2, module2) {
@@ -7993,6 +8095,7 @@ var require_anime_mapping_helper = __commonJS({
 
 // src/animeunity/index.js
 var { extractVixCloud } = require_extractors();
+var { extractStreamsViaApi } = require_api();
 var { getProxiedUrl } = require_common();
 var { formatStream } = require_formatter();
 var { checkQualityFromPlaylist } = require_quality_helper();
@@ -8962,6 +9065,15 @@ function extractStreamsFromAnimePath(animePath, requestedEpisode) {
   return __async(this, null, function* () {
     const normalizedPath = normalizeAnimePath(animePath);
     if (!normalizedPath) return [];
+    try {
+      const apiStreams = yield extractStreamsViaApi(
+        normalizedPath,
+        normalizeRequestedEpisode(requestedEpisode)
+      );
+      if (apiStreams.length > 0) return apiStreams;
+    } catch (error) {
+      console.error("[AnimeUnity] API path failed, falling back:", error.message);
+    }
     const animeUrl = buildUnityUrl(normalizedPath);
     if (!animeUrl) return [];
     let parsedAnime = null;

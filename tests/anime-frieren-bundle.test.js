@@ -184,7 +184,7 @@ function makeFrierenFetch(seen, { imdbPayload = null, externalMode = 'ok' } = {}
     if (u.startsWith('https://www.animesaturn.net/anime/frieren-s2/ep-1')) return htmlRes(saturnWatchHtml());
     if (u.startsWith('https://www.animesaturn.net/watch')) return htmlRes(saturnWatchHtml());
     if (u.includes('cdn.test/')) return notFound();
-    if (u.includes('animeunity.so') || u.includes('animeworld.ac') || u.includes('animesaturn.net')) return notFound();
+    if (u.includes('animeunity.so') || u.includes('animeunity.cx') || u.includes('animeworld.ac') || u.includes('animesaturn.net')) return notFound();
     return notFound();
   };
 }
@@ -195,6 +195,7 @@ function assertOfflineOnly(seen) {
       u.includes('api.themoviedb.org') ||
       u.includes('animemapping.realbestia.com') ||
       u.includes('animeunity.so') ||
+      u.includes('animeunity.cx') ||
       u.includes('animeworld.ac') ||
       u.includes('animesaturn.net') ||
       u.includes('cdn.test/');

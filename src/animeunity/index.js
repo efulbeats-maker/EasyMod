@@ -1,6 +1,7 @@
 "use strict";
 
 const { extractVixCloud } = require("../extractors");
+const { extractStreamsViaApi } = require("./api.js");
 const { getProxiedUrl } = require("../extractors/common.js");
 const { formatStream } = require("../formatter.js");
 const { checkQualityFromPlaylist } = require("../quality_helper.js");
@@ -1208,6 +1209,17 @@ async function mapLimit(values, limit, mapper) {
 async function extractStreamsFromAnimePath(animePath, requestedEpisode) {
   const normalizedPath = normalizeAnimePath(animePath);
   if (!normalizedPath) return [];
+
+  // Primary: animeunity.cx JSON API. Falls through to HTML scraping on failure/empty.
+  try {
+    const apiStreams = await extractStreamsViaApi(
+      normalizedPath,
+      normalizeRequestedEpisode(requestedEpisode)
+    );
+    if (apiStreams.length > 0) return apiStreams;
+  } catch (error) {
+    console.error("[AnimeUnity] API path failed, falling back:", error.message);
+  }
 
   const animeUrl = buildUnityUrl(normalizedPath);
   if (!animeUrl) return [];
