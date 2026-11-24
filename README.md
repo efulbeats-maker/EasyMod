@@ -17,7 +17,6 @@ https://raw.githubusercontent.com/efulbeats-maker/EasyMod/refs/heads/main/
 - Guardoserie
 - StreamingCommunity
 - AltadefinizioneStreaming
-- Cineblog001
 - AltadefinizioneX
 - AnimeUnity
 - AnimeWorld

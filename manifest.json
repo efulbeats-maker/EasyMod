@@ -83,7 +83,7 @@
     {
       "id": "easystreams-cineblog001",
       "name": "Cineblog001",
-      "version": "1.0.1",
+      "version": "1.0.2",
       "description": "Movies and Series from Cineblog001",
       "resources": ["stream"],
       "contentLanguage": ["it"],
@@ -91,7 +91,7 @@
       "idPrefixes": ["tmdb:", "tt"],
       "filename": "providers/cineblog001.js",
       "supportedTypes": ["movie", "tv", "series"],
-      "enabled": true
+      "enabled": false
     },
     {
       "id": "easystreams-altadefinizionex",
