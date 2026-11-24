@@ -1,96 +1,78 @@
 # EasyMod
 
-Plugin Nuvio con 8 provider italiani per Film, Serie TV e Anime.
+Plugin **Nuvio** con 8 provider italiani per Film, Serie TV e Anime.
 
-## Provider supportati
+> Fork del progetto **EasyStreams** di **Real Bestia** ([realbestia1](https://github.com/realbestia1/)).
 
-- **Guardoserie** (Film e Serie TV)
-- **AnimeUnity** (Anime)
-- **AnimeWorld** (Anime)
-- **AnimeSaturn** (Anime)
-- **StreamingCommunity** (Film e Serie TV)
-- **AltadefinizioneStreaming** (Film e Serie TV)
-- **Cineblog001** (Film e Serie TV)
-- **AltadefinizioneX** (Film e Serie TV)
+## Provider
 
-L'elenco corrisponde agli 8 scraper dichiarati in `manifest.json`.
+| Provider | Contenuti |
+|---|---|
+| Guardoserie | Film, Serie TV |
+| StreamingCommunity | Film, Serie TV |
+| AltadefinizioneStreaming | Film, Serie TV |
+| Cineblog001 | Film, Serie TV |
+| AltadefinizioneX | Film, Serie TV |
+| AnimeUnity | Anime |
+| AnimeWorld | Anime |
+| AnimeSaturn | Anime |
 
-> Nota: Cineblog001 e AltadefinizioneX verificano i titoli sui rispettivi
-> siti, ma entrambi risolvono lo stream tramite lo stesso backend Vixsrc
-> (stesso resolver di StreamingCommunity), quindi non sono fonti
-> indipendenti: se il backend non risponde, entrambi restituiscono `[]`.
+Cineblog001, AltadefinizioneX e StreamingCommunity risolvono lo stream con lo stesso backend (Vixsrc): non sono fonti indipendenti. Se il backend non risponde, restituiscono tutti una lista vuota.
 
-## Installazione su Nuvio
+## Cosa cambia rispetto all'originale
 
-1. Apri **Nuvio**.
-2. Vai in **Impostazioni > Plugin**.
-3. Incolla l'URL base del plugin (deve puntare al `manifest.json` pubblicato insieme a `providers/`).
-4. URL di installazione EasyMod:
+- **AnimeUnity** usa l'API JSON di animeunity.cx; se non risponde, ripiega sullo scraping HTML.
+- **StreamingCommunity**: `h=1` viene aggiunto alla playlist solo quando il sito dichiara il 1080p, altrimenti la playlist risponde 403 e non compare nessuno stream.
+- **Formato degli stream** semplificato:
+
+  ```text
+  🎬 StreamingCommunity · 720p
+     Il Trono di Spade S01E01 · 🗣️ ITA
+  ```
+
+## Installazione
+
+1. In Nuvio apri **Impostazioni > Plugin**.
+2. Aggiungi questo URL:
+
    ```text
    https://raw.githubusercontent.com/efulbeats-maker/EasyMod/refs/heads/main/
    ```
-5. Se l'URL è raggiungibile e i bundle sono validi, Nuvio mostrerà i provider.
 
-## Aggiornamento del plugin
+3. Abilita i provider che vuoi usare.
 
-1. Vai in **Impostazioni > Plugin**.
-2. Rimuovi EasyMod e aggiungilo di nuovo con lo stesso URL, oppure usa la funzione di aggiornamento dei plugin se disponibile.
-3. Riavvia Nuvio per caricare la nuova versione del `manifest.json`.
+Per aggiornare: rimuovi il plugin e aggiungilo di nuovo con lo stesso URL, poi riavvia Nuvio.
 
-## Build `--nuvio`
+## Sviluppo
 
 ```bash
 npm install
-node build.js --nuvio
+node build.js --nuvio            # genera i bundle in providers/
+node build.js --nuvio --minify   # versione minificata
+npm test                         # test offline con fetch simulata
 ```
 
-Variante minificata (stesse 8 voci del manifest):
+I bundle in `providers/` sono quelli che Nuvio scarica: dopo ogni modifica a `src/` vanno rigenerati e va alzata la versione dello scraper in `manifest.json`.
 
-```bash
-node build.js --nuvio --minify
-```
+## Impostazioni opzionali
 
-La build genera solo i bundle degli 8 scraper del manifest.
+Si impostano in `SCRAPER_SETTINGS`.
 
-## Test
+| Impostazione | Predefinito | Funzione |
+|---|---|---|
+| `guardoserieResolveBase` | `https://easystreams.realbestia.com/resolve/guardoserie` | Endpoint che risolve Guardoserie (solo URL `http(s)` senza credenziali) |
+| `guardoserieResolveTimeout` | `10000` ms | Timeout della risoluzione, da 10 a 30000 |
+| `altadefinizioneCookie` (o variabile `ALTADEFINIZIONE_COOKIE`) | vuoto | Cookie per altadefinizionestreaming.tv, se il sito chiede una sessione |
+| `animeMappingTmdbTimeout` | `5000` ms | Timeout della risoluzione TMDB degli anime stagionali, da 10 a 30000 |
 
-```bash
-npm install
-npm test
-```
-
-Equivalente esplicito:
-
-```bash
-node --test tests/nuvio-plugin.test.js tests/nuvio-bundles.test.js tests/anime-seasonal-imdb.test.js tests/anime-frieren-bundle.test.js tests/cineblog001.test.js tests/altadefinizionex.test.js
-```
-
-I test sono offline con fetch simulata (nessuna richiesta live streaming).
-
-Nota anime S2+: le lookup TMDB `tv/series/anime` con `season >= 2` vengono
-risolte via `GET /3/tv/{id}/external_ids` verso IMDb e proseguono solo sul
-mapping IMDb con stessa stagione (`matchedBy: null` resta accettato quando
-`kitsu.episode` è valido); in caso di metadata non valido o mappatura
-incompleta/incoerente il provider restituisce fail-safe `[]` senza fallback
-al mapping TMDB. L'assenza di estrazione di episodi non pertinenti vale per i
-casi coperti dai test con dati simulati e non garantisce il riconoscimento
-semantico di ogni stagione se il servizio remoto fornisce dati falsi.
-
-## Impostazioni
-
-- `SCRAPER_SETTINGS.guardoserieResolveBase`: endpoint completo incluso il percorso, valore predefinito `https://easystreams.realbestia.com/resolve/guardoserie`. Solo URL `http(s)` senza credenziali, query, hash o spazi; i valori non validi usano il valore predefinito. Gli spazi iniziali e finali vengono rimossi, le barre finali vengono tolte e i parametri vengono codificati con `encodeURIComponent`.
-- `SCRAPER_SETTINGS.guardoserieResolveTimeout`: timeout in millisecondi, predefinito `10000`, consentito da `10` a `30000`; i valori non validi usano il valore predefinito. Se la risposta supera il tempo massimo, la ricerca restituisce una lista vuota.
-- `SCRAPER_SETTINGS.altadefinizioneCookie` oppure variabile d'ambiente `ALTADEFINIZIONE_COOKIE`: cookie facoltativo per `https://altadefinizionestreaming.tv`. Il plugin non usa più un cookie predefinito incorporato nei bundle Nuvio. Se vuoto, le richieste non inviano alcun header `Cookie`; se il sito richiede una sessione valida, il provider restituisce una lista vuota.
-- `SCRAPER_SETTINGS.animeMappingTmdbTimeout`: timeout in millisecondi per la risoluzione TMDB `external_ids` degli anime stagionali, predefinito `5000`, consentito da `10` a `30000`; i valori non validi usano il valore predefinito.
+Un valore non valido ripristina il predefinito.
 
 ## Limiti
 
-- I successi dei test con dati simulati non garantiscono che i siti reali rispondano o che la struttura delle pagine sia invariata.
-- Dipendenza dal server Guardoserie: il client Nuvio chiama l'endpoint resolve invece di leggere direttamente il sito. Se l'endpoint non è raggiungibile, il provider restituisce una lista vuota.
-- I siti di origine possono applicare blocchi geografici o protezioni anti-bot; in tal caso i provider restituiscono una lista vuota.
+- I test non toccano i siti reali: non garantiscono che i siti rispondano o che le loro pagine non siano cambiate.
+- Guardoserie dipende dal server di risoluzione indicato sopra: se è irraggiungibile, restituisce una lista vuota.
+- I siti possono bloccare per area geografica o con protezioni anti-bot: in quel caso il provider restituisce una lista vuota.
 
----
+## Crediti e licenza
 
-Derivato da realbestia1/easystreams; progetto originale dichiara ISC in package.json.
-
-**Powered by [realbestia1](https://github.com/realbestia1/)**
+Fork di EasyStreams di [realbestia1](https://github.com/realbestia1/). Licenza **ISC**, come dichiarato nel `package.json` del progetto originale.
