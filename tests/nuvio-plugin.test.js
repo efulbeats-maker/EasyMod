@@ -331,11 +331,11 @@ describe('cineblog001/altadefinizionex positive chain (mock integrale, sorgenti)
       if (u.includes('cineblog001.tattoo/cb01-streaming/')) {
         return { ok: true, status: 200, json: async () => ({}), text: async () => `<html><body><script>var imdb = '${FILM_IMDB}';var SERIES = 0;</script><iframe id="vidxgo-player" src=""></iframe><script>iframe.src = 'https://vixsrc.to/movie/${FILM_IMDB}?lang=it';</script></body></html>` };
       }
-      if (u === 'https://altadefinizionex.surf/') {
-        return { ok: true, status: 200, json: async () => ({}), text: async () => '<div class="col"><div class="movie" data-imdb="7.3" data-year="2026" data-link="https://altadefinizionex.surf/drammatico/35054-doing-life-streaming.html"><div class="movie-info"><h2 class="movie-title"><a href="https://altadefinizionex.surf/drammatico/35054-doing-life-streaming.html">Doing Life</a></h2></div></div></div>' };
+      if (u.startsWith('https://altadefinizionex.stream/search?q=')) {
+        return { ok: true, status: 200, json: async () => ({}), text: async () => '<div class="movie" data-title="Doing Life" data-year="2026" data-link="/drammatico/35054-doing-life-streaming.html"></div>' };
       }
-      if (u.startsWith('https://altadefinizionex.surf/')) {
-        return { ok: true, status: 200, json: async () => ({}), text: async () => `<html><body><iframe id="dle-player" src="https://vixsrc.to/movie/${FILM_IMDB}?lang=it"></iframe><div class="movie_entry-details"><div class="row"><div class="col-auto label-text">Anno:</div><div class="col-auto">2026</div></div></div></body></html>` };
+      if (u.startsWith('https://altadefinizionex.stream/')) {
+        return { ok: true, status: 200, json: async () => ({}), text: async () => `<html><body><iframe src="https://v.vidxgo.co/${FILM_IMDB.slice(2)}"></iframe><div class="row"><div class="col-auto">Anno:</div><div class="col-auto">2026</div></div></body></html>` };
       }
       return prev ? prev(url, opts) : { ok: false, status: 404, json: async () => ({}), text: async () => '' };
     };

@@ -416,7 +416,7 @@ describe('cineblog001/altadefinizionex bundle: catena reale mockata => 1 stream'
   const TV_IMDB = 'tt36849871';
   const TV_TMDB = '290856';
   const CINE_BASE = 'https://cineblog001.tattoo';
-  const ADX_BASE = 'https://altadefinizionex.surf';
+  const ADX_BASE = 'https://altadefinizionex.stream';
 
   function cineSearchHtml() {
     return '<article class="short block-list"><div class="short-main">'
@@ -435,30 +435,22 @@ describe('cineblog001/altadefinizionex bundle: catena reale mockata => 1 stream'
       + `<script>iframe.src = 'https://vixsrc.to/movie/${imdb}?lang=it';</script></body></html>`;
   }
 
+  function adxCard(title, year, link) {
+    return `<div class="movie" data-title="${title}" data-year="${year}" data-link="${link}"></div>`;
+  }
+
   function adxSearchHtml(serie) {
-    if (serie) {
-      return '<div class="col"><div class="movie" data-imdb="0.0" data-year="2026" '
-        + 'data-link="https://altadefinizionex.surf/serie-tv/33122-marshals-streaming.html">'
-        + '<div class="movie-info"><h2 class="movie-title">'
-        + '<a href="https://altadefinizionex.surf/serie-tv/33122-marshals-streaming.html">Marshals</a>'
-        + '</h2></div></div></div>';
-    }
-    return '<div class="col"><div class="movie" data-imdb="7.3" data-year="2026" '
-      + 'data-link="https://altadefinizionex.surf/drammatico/35054-doing-life-streaming.html">'
-      + '<div class="movie-info"><h2 class="movie-title">'
-      + '<a href="https://altadefinizionex.surf/drammatico/35054-doing-life-streaming.html">Doing Life</a>'
-      + '</h2></div></div></div>';
+    return serie
+      ? adxCard('Marshals', '2026', '/serie-tv/33122-marshals-streaming.html')
+      : adxCard('Doing Life', '2026', '/drammatico/35054-doing-life-streaming.html');
   }
 
   function adxDetailHtml(serie) {
-    if (serie) {
-      return `<html><body><script>(function(){ var imdb = '${TV_IMDB}'; iframe.src = 'https://vixsrc.to/tv/' + imdb; })();</script>`
-        + '<div class="movie_entry-details"><div class="row"><div class="col-auto label-text">Anno:</div>'
-        + '<div class="col-auto">2026</div></div></div></body></html>';
-    }
-    return `<html><body><iframe id="dle-player" src="https://vixsrc.to/movie/${FILM_IMDB}?lang=it"></iframe>`
-      + '<div class="movie_entry-details"><div class="row"><div class="col-auto label-text">Anno:</div>'
-      + '<div class="col-auto">2026</div></div></div></body></html>';
+    const year = '<div class="row"><div class="col-auto">Anno:</div><div class="col-auto">2026</div></div>';
+    const player = serie
+      ? `<iframe src="https://v.vidxgo.co/${TV_IMDB.slice(2)}/1/1?se=0"></iframe>`
+      : `<iframe src="https://v.vidxgo.co/${FILM_IMDB.slice(2)}"></iframe>`;
+    return `<html><body>${player}${year}</body></html>`;
   }
 
   function chainFetch(seen) {
@@ -485,9 +477,8 @@ describe('cineblog001/altadefinizionex bundle: catena reale mockata => 1 stream'
         const serie = u.includes('marshals');
         return { ok: true, status: 200, json: async () => ({}), text: async () => cineDetailHtml(serie) };
       }
-      if (u === `${ADX_BASE}/`) {
-        const body = String((opts && opts.body) || '');
-        return { ok: true, status: 200, json: async () => ({}), text: async () => adxSearchHtml(body.includes('Marshals')) };
+      if (u.startsWith(`${ADX_BASE}/search?q=`)) {
+        return { ok: true, status: 200, json: async () => ({}), text: async () => adxSearchHtml(u.includes('Marshals')) };
       }
       if (u.startsWith(`${ADX_BASE}/`)) {
         return { ok: true, status: 200, json: async () => ({}), text: async () => adxDetailHtml(u.includes('/serie-tv/')) };

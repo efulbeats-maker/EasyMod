@@ -13,74 +13,59 @@ const path = require('node:path');
 
 const SRC_PATH = path.join(__dirname, '..', 'src', 'altadefinizionex', 'index.js');
 const SC_PATH = path.join(__dirname, '..', 'src', 'streamingcommunity', 'index.js');
-const BASE_URL = 'https://altadefinizionex.surf';
+const BASE_URL = 'https://altadefinizionex.stream';
 
 const FILM_IMDB = 'tt36429458';
 const FILM_TMDB = '1458857';
 const TV_IMDB = 'tt36849871';
 const TV_TMDB = '290856';
 
-// Card DLE reali (.movie + data-link/data-year + h2.movie-title).
+// Schede del sito (.movie con data-title/data-year/data-link relativo).
 // Nota: data-imdb della card e' il rating, mai usato per validare.
-function filmSearchHtml() {
+function card({ title, year, link, kind = 'movie' }) {
   return `
-<div class="col">
-  <div class="movie"
-  data-imdb="7.3"
-  data-year="2026"
-  data-link="https://altadefinizionex.surf/drammatico/35054-doing-life-streaming.html"
-  >
-    <div class="movie-poster"><a href="https://altadefinizionex.surf/drammatico/35054-doing-life-streaming.html"><img src="/uploads/thumb/203x293-0-70/2026-10/tt36429458.jpg" /></a></div>
-    <div class="movie-info"><h2 class="movie-title"><a href="https://altadefinizionex.surf/drammatico/35054-doing-life-streaming.html">Doing Life</a></h2></div>
-  </div>
-</div>
-<div class="col">
-  <div class="movie"
-  data-imdb="6.1"
-  data-year="2020"
-  data-link="https://altadefinizionex.surf/drammatico/99999-doing-other-streaming.html"
-  >
-    <div class="movie-poster"><a href="https://altadefinizionex.surf/drammatico/99999-doing-other-streaming.html"><img src="/uploads/thumb/203x293-0-70/2020-01/tt0000001.jpg" /></a></div>
-    <div class="movie-info"><h2 class="movie-title"><a href="https://altadefinizionex.surf/drammatico/99999-doing-other-streaming.html">Doing Other</a></h2></div>
+<div class="swiper-slide">
+  <div class="movie" data-title="${title}" data-imdb="7.3" data-year="${year}" data-duration="" data-category="Drammatico" data-story="Trama" data-link="${link}">
+    <div class="movie-poster ratio ratio-2x3"><a href="${link}" data-title="${title}" data-id="1" data-kind="${kind}" data-year="${year}"><img src="https://img.altadefinizionex.stream/t/p/w300/x.jpg" alt="${title}"/></a></div>
   </div>
 </div>`;
+}
+
+function filmSearchHtml() {
+  return card({ title: 'Doing Life', year: '2026', link: '/drammatico/35054-doing-life-streaming.html' })
+    + card({ title: 'Doing Other', year: '2020', link: '/drammatico/99999-doing-other-streaming.html' });
 }
 
 function tvSearchHtml() {
-  return `
-<div class="col">
-  <div class="movie"
-  data-imdb="0.0"
-  data-year="2026"
-  data-link="https://altadefinizionex.surf/serie-tv/33122-marshals-streaming.html"
-  >
-    <div class="movie-poster"><a href="https://altadefinizionex.surf/serie-tv/33122-marshals-streaming.html"><img src="/uploads/thumb/2026-03/marshals-streaming_1772500141.jpg" /></a></div>
-    <div class="movie-info"><h2 class="movie-title"><a href="https://altadefinizionex.surf/serie-tv/33122-marshals-streaming.html">Marshals</a></h2></div>
-  </div>
-</div>`;
+  return card({ title: 'Marshals', year: '2026', link: '/serie-tv/33122-marshals-streaming.html', kind: 'series' });
 }
 
-// Dettaglio film realistico: iframe vixsrc /movie/<tt> + Anno.
-// Include il fallback vidxgo commentato come nelle pagine reali: dopo lo
-// strip dei commenti non deve contare come player.
+const digits = (imdb) => String(imdb || '').replace(/^tt/i, '');
+const YEAR_ROW = (year) => `<div class="row"><div class="col-auto">Anno:</div><div class="col-auto flex-grow-1">${year}</div></div>`;
+
+// Dettaglio film realistico: trailer (?content=trailer) + iframe player
+// vidxgo/<cifre IMDb> + Anno. Il trailer non deve contare come player.
+// Un iframe player commentato non deve contare dopo lo strip dei commenti.
 function filmDetailHtml({ imdb = FILM_IMDB, year = '2026', tvPlayer = false } = {}) {
-  const iframe = imdb
-    ? `<!--<iframe src="https://v.vidxgo.co/${imdb}"></iframe>--><iframe id="dle-player" src="https://vixsrc.to/movie/${imdb}?lang=it" allowfullscreen frameborder="0"></iframe>`
+  const d = digits(imdb || '0');
+  const trailer = `<iframe src="https://v.vidxgo.co/${d}?content=trailer&amp;player=false" title="Trailer"></iframe>`;
+  const player = imdb
+    ? `<!--<iframe src="https://v.vidxgo.co/${d}"></iframe>--><iframe src="https://v.vidxgo.co/${d}" allowFullScreen="" title="Player"></iframe>`
     : `<div class="no-player"></div>`;
-  const tv = tvPlayer ? `<script>iframe.src = 'https://vixsrc.to/tv/${imdb || 'tt0'}' + imdb;</script>` : '';
-  return `<html><body>${iframe}${tv}<div class="movie_entry-details"><div class="row"><div class="col-auto label-text">Anno:</div><div class="col-auto">${year}</div></div></div></body></html>`;
+  const tv = tvPlayer ? `<iframe src="https://v.vidxgo.co/${d}/1/1?se=0" title="Player"></iframe>` : '';
+  return `<html><body>${trailer}${player}${tv}${YEAR_ROW(year)}</body></html>`;
 }
 
-// Dettaglio serie realistico: var imdb + player JS vixsrc /tv/ + Anno.
-// I poster contengono tt ma non bastano: serve var imdb + player /tv/.
+// Dettaglio serie realistico: iframe player vidxgo/<cifre IMDb>/<s>/<e>?se=0 + Anno.
+// I poster possono contenere altri id ma non bastano: serve il player /<s>/<e>.
 function serieDetailHtml({ imdb = TV_IMDB, year = '2026', moviePlayer = false } = {}) {
-  const varLine = imdb ? `var imdb = '${imdb}';` : `var imdb = '';`;
-  const commented = `<!--<iframe src="https://v.vidxgo.co/[xfvalue_imdbid]"></iframe>-->`;
-  const tvJs = `<script>(function(){ ${varLine} iframe.src = 'https://vixsrc.to/tv/' + imdb; })();</script>`;
-  const movie = moviePlayer && imdb
-    ? `<iframe src="https://vixsrc.to/movie/${imdb}?lang=it"></iframe>`
+  const d = digits(imdb || '0');
+  const trailer = `<iframe src="https://v.vidxgo.co/${d}?content=trailer&amp;player=false" title="Trailer"></iframe>`;
+  const player = imdb
+    ? `<iframe src="https://v.vidxgo.co/${d}/1/1?se=0" allowFullScreen="" title="Player"></iframe>`
     : '';
-  return `<html><body>${commented}${tvJs}${movie}<div class="movie_entry-details"><div class="row"><div class="col-auto label-text">Anno:</div><div class="col-auto">${year}</div></div></div></body></html>`;
+  const movie = moviePlayer && imdb ? `<iframe src="https://v.vidxgo.co/${d}" title="Player"></iframe>` : '';
+  return `<html><body>${trailer}${player}${movie}${YEAR_ROW(year)}</body></html>`;
 }
 
 function installFetchMock({ searchHtml, detailHtml, failUrls = [], seen = null } = {}) {
@@ -92,7 +77,7 @@ function installFetchMock({ searchHtml, detailHtml, failUrls = [], seen = null }
     if (u.includes('api.themoviedb.org')) {
       return globalThis.__tmdbPrev ? globalThis.__tmdbPrev(url, opts) : { ok: false, status: 404, json: async () => ({}), text: async () => '' };
     }
-    if (u === `${BASE_URL}/`) {
+    if (u.startsWith(`${BASE_URL}/search?q=`)) {
       return { ok: true, status: 200, json: async () => ({}), text: async () => searchHtml };
     }
     if (u.startsWith(`${BASE_URL}/`)) {
@@ -211,12 +196,10 @@ describe('altadefinizionex provider (offline)', () => {
     assert.equal(out[0].qualityTag, '💿 HD');
     assert.equal(out[0].language, '🇮🇹');
     assert.equal(scCalls.length, 1);
-    const searchCall = seen.find((c) => c.url === `${BASE_URL}/`);
+    const searchCall = seen.find((c) => c.url.startsWith(`${BASE_URL}/search?q=`));
     assert.ok(searchCall, 'ricerca eseguita');
-    assert.equal(searchCall.method, 'POST');
-    assert.ok(searchCall.body.includes('story='), 'campo story presente');
-    assert.ok(searchCall.body.includes('do=search'), 'campo do presente');
-    assert.ok(searchCall.body.includes('subaction=search'), 'campo subaction presente');
+    assert.equal(searchCall.method, 'GET');
+    assert.equal(searchCall.url, `${BASE_URL}/search?q=${encodeURIComponent('Doing Life')}`);
   });
 
   it('tv: IMDb via external_ids, S/E mappati, titolo S02E03', async () => {
@@ -262,11 +245,11 @@ describe('altadefinizionex provider (offline)', () => {
   });
 
   it('iframe/script solo commentati non contano come player => []', async () => {
-    const filmCommentedOnly = `<html><body><!--<iframe id="dle-player" src="https://vixsrc.to/movie/${FILM_IMDB}?lang=it"></iframe>--><img src="/uploads/thumb/tt36429458.jpg" /><div class="movie_entry-details"><div class="row"><div class="col-auto label-text">Anno:</div><div class="col-auto">2026</div></div></div></body></html>`;
+    const filmCommentedOnly = `<html><body><!--<iframe src="https://v.vidxgo.co/36429458"></iframe>--><img src="/uploads/thumb/tt36429458.jpg" /><div class="movie_entry-details"><div class="row"><div class="col-auto label-text">Anno:</div><div class="col-auto">2026</div></div></div></body></html>`;
     mockSite({ searchHtml: filmSearchHtml(), detailHtml: filmCommentedOnly });
     const api = load();
     assert.deepEqual(await api.getStreams(FILM_IMDB, 'movie', 1, 1), []);
-    const serieCommentedOnly = `<html><body><!--<script>var imdb = '${TV_IMDB}'; iframe.src = 'https://vixsrc.to/tv/' + imdb;</script>--><img src="/uploads/logos/tt36849871.webp" /><div class="movie_entry-details"><div class="row"><div class="col-auto label-text">Anno:</div><div class="col-auto">2026</div></div></div></body></html>`;
+    const serieCommentedOnly = `<html><body><!--<iframe src="https://v.vidxgo.co/36849871/1/1?se=0"></iframe>--><img src="/uploads/logos/tt36849871.webp" /><div class="movie_entry-details"><div class="row"><div class="col-auto label-text">Anno:</div><div class="col-auto">2026</div></div></div></body></html>`;
     mockSite({ searchHtml: tvSearchHtml(), detailHtml: serieCommentedOnly });
     assert.deepEqual(await api.getStreams(TV_IMDB, 'series', 1, 1), []);
     assert.equal(scCalls.length, 0);
@@ -306,7 +289,7 @@ describe('altadefinizionex provider (offline)', () => {
 
   it('titolo/anno card non corrispondenti => []', async () => {
     mockSite({
-      searchHtml: `<div class="col"><div class="movie" data-imdb="5.0" data-year="2020" data-link="https://altadefinizionex.surf/drammatico/1-x-streaming.html"><div class="movie-info"><h2 class="movie-title"><a href="https://altadefinizionex.surf/drammatico/1-x-streaming.html">Altro Film</a></h2></div></div></div>`,
+      searchHtml: `<div class="col"><div class="movie" data-imdb="5.0" data-year="2020" data-link="https://altadefinizionex.stream/drammatico/1-x-streaming.html"><div class="movie-info"><h2 class="movie-title"><a href="https://altadefinizionex.stream/drammatico/1-x-streaming.html">Altro Film</a></h2></div></div></div>`,
       detailHtml: filmDetailHtml()
     });
     const api = load();
@@ -323,7 +306,7 @@ describe('altadefinizionex provider (offline)', () => {
   });
 
   it('errori rete (search/detail) => [] senza throw', async () => {
-    installFetchMock({ searchHtml: filmSearchHtml(), detailHtml: filmDetailHtml(), failUrls: ['altadefinizionex.surf'] });
+    installFetchMock({ searchHtml: filmSearchHtml(), detailHtml: filmDetailHtml(), failUrls: ['altadefinizionex.stream'] });
     installTmdbMock();
     const api = load();
     const out = await api.getStreams(FILM_IMDB, 'movie', 1, 1);
@@ -367,10 +350,10 @@ describe('altadefinizionex provider (offline)', () => {
     const api = load();
     const out = await api.getStreams('kitsu:1', 'anime', 1, 1);
     assert.deepEqual(out, []);
-    assert.ok(!seen.some((c) => c.url.includes('altadefinizionex.surf')));
+    assert.ok(!seen.some((c) => c.url.includes('altadefinizionex.stream')));
   });
 
-  it('sorgente usa fetchWithTimeout POST, mai raw fetch(), nessun nuovo extractor', () => {
+  it('sorgente usa fetchWithTimeout, mai raw fetch(), nessun nuovo extractor', () => {
     const src = fs.readFileSync(SRC_PATH, 'utf8');
     assert.ok(src.includes('fetchWithTimeout'), 'deve usare fetchWithTimeout');
     assert.ok(!/(^|[^a-zA-Z_])await\s+fetch\s*\(/.test(src), 'mai raw fetch()');
@@ -378,14 +361,15 @@ describe('altadefinizionex provider (offline)', () => {
     assert.ok(!/stayonline|mixdrop|unPack|atob\(|eval\(function|cf_bypass|voe|vidara|firestream|supervideo/i.test(src), 'nessun nuovo extractor/bypass');
     assert.ok(src.includes('append_to_response=external_ids'), 'IMDb da external_ids');
     assert.ok(src.includes('new URL('), 'allowlist via hostname URL');
-    assert.ok(src.includes('subaction'), 'ricerca DLE con subaction');
-    assert.ok(/method:\s*["']POST["']/.test(src), 'ricerca via POST');
+    assert.ok(src.includes('/search?q='), 'ricerca via GET /search?q=');
+    assert.ok(!/method:\s*["']POST["']/.test(src), 'nessuna POST');
     assert.ok(!src.includes('URLSearchParams'), 'nessuna dipendenza da URLSearchParams (runtime Nuvio)');
   });
 
-  it('form search codifica & # apostrofi e unicode via encodeURIComponent', async () => {
+  it('search codifica & # apostrofi e unicode via encodeURIComponent', async () => {
     const special = `L'Ultima & Alba #2 è`;
-    const card = `<div class="col"><div class="movie" data-imdb="7.0" data-year="2026" data-link="https://altadefinizionex.surf/drammatico/35054-doing-life-streaming.html"><div class="movie-info"><h2 class="movie-title"><a href="https://altadefinizionex.surf/drammatico/35054-doing-life-streaming.html">${special}</a></h2></div></div></div>`;
+    const escaped = special.replace(/&/g, '&amp;').replace(/'/g, '&#x27;');
+    const card = `<div class="movie" data-title="${escaped}" data-year="2026" data-link="/drammatico/35054-doing-life-streaming.html"></div>`;
     const seen = [];
     globalThis.fetch = async (url, opts = {}) => {
       const u = String(url);
@@ -398,16 +382,15 @@ describe('altadefinizionex provider (offline)', () => {
           text: async () => ''
         };
       }
-      if (u === `${BASE_URL}/`) return { ok: true, status: 200, json: async () => ({}), text: async () => card };
+      if (u.startsWith(`${BASE_URL}/search?q=`)) return { ok: true, status: 200, json: async () => ({}), text: async () => card };
       if (u.startsWith(`${BASE_URL}/`)) return { ok: true, status: 200, json: async () => ({}), text: async () => filmDetailHtml() };
       return { ok: false, status: 404, json: async () => ({}), text: async () => '' };
     };
     const api = load();
     const out = await api.getStreams(FILM_IMDB, 'movie', 1, 1);
     assert.equal(out.length, 1);
-    const searchCall = seen.find((c) => c.url === `${BASE_URL}/`);
-    const expected = `story=${encodeURIComponent(special)}&do=search&subaction=search`;
-    assert.equal(searchCall.body, expected, searchCall.body);
+    const searchCall = seen.find((c) => c.url.startsWith(`${BASE_URL}/search?q=`));
+    assert.equal(searchCall.url, `${BASE_URL}/search?q=${encodeURIComponent(special)}`, searchCall.url);
   });
 });
 
@@ -439,9 +422,8 @@ describe('altadefinizionex in VM senza URLSearchParams (runtime Nuvio)', () => {
       const u = String(url);
       const tmdb = tmdbPayload(u);
       if (tmdb) return { ok: true, status: 200, json: async () => tmdb, text: async () => '' };
-      if (u === `${BASE_URL}/`) {
-        const body = String(opts.body || '');
-        const html = body.includes('Marshals') ? tvSearchHtml() : filmSearchHtml();
+      if (u.startsWith(`${BASE_URL}/search?q=`)) {
+        const html = u.includes('Marshals') ? tvSearchHtml() : filmSearchHtml();
         return { ok: true, status: 200, json: async () => ({}), text: async () => html };
       }
       if (u.startsWith(`${BASE_URL}/`)) {

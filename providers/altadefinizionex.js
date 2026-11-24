@@ -863,7 +863,7 @@ var require_streamingcommunity = __commonJS({
 
 // src/altadefinizionex/index.js
 var TMDB_API_KEY = "68e094699525b18a70bab2f86b1fa706";
-var BASE_URL = "https://altadefinizionex.surf";
+var BASE_URL = "https://altadefinizionex.stream";
 var USER_AGENT = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36";
 var VIXSRC_BASES = ["cromosino.space", "vixsrc.to", "vixcloud.co"];
 var { fetchWithTimeout } = require_fetch_helper();
@@ -876,9 +876,6 @@ function siteHeaders(extra = {}) {
     "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
     "Accept-Language": "it-IT,it;q=0.9,en-US;q=0.8,en;q=0.7"
   }, extra);
-}
-function encodeForm(fields) {
-  return Object.keys(fields || {}).map((k) => `${encodeURIComponent(k)}=${encodeURIComponent(fields[k])}`).join("&");
 }
 function stripComments(html) {
   return String(html || "").replace(/<!--[\s\S]*?-->/g, " ");
@@ -959,25 +956,29 @@ function getShowMeta(tmdbId, providerType) {
 function normalizeTitle(value) {
   return String(value || "").toLowerCase().replace(/\[[^\]]*\]/g, " ").replace(/\([^)]*(19|20)\d{2}[^)]*\)/g, " ").replace(/\bstreaming\b/g, " ").replace(/[^\p{L}\p{N}]+/gu, "").trim();
 }
+function decodeAttr(value) {
+  return String(value || "").replace(/&#x27;|&#39;/g, "'").replace(/&quot;/g, '"').replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&amp;/g, "&");
+}
 function parseSearchCards(html) {
   const cards = [];
+  const seen = /* @__PURE__ */ new Set();
   const chunks = String(html || "").split('<div class="movie"');
   for (let i = 1; i < chunks.length; i++) {
     const body = chunks[i].slice(0, 4e3);
     const linkMatch = body.match(/data-link="([^"]+)"/i);
+    const titleMatch = body.match(/data-title="([^"]*)"/i);
     const yearMatch = body.match(/data-year="((?:19|20)\d{2})"/i);
-    const titleMatch = body.match(/<h2 class="movie-title">\s*<a[^>]*href="([^"]+)"[^>]*>([^<]+)<\/a>/i);
-    if (!linkMatch && !titleMatch) continue;
-    const url = (titleMatch ? titleMatch[1] : linkMatch[1]).trim();
-    const title = titleMatch ? titleMatch[2].trim() : "";
-    if (!title || !url) continue;
-    let absolute = url;
+    if (!linkMatch || !titleMatch) continue;
+    const title = decodeAttr(titleMatch[1]).trim();
+    if (!title) continue;
+    let absolute;
     try {
-      absolute = new URL(url, BASE_URL).toString();
+      absolute = new URL(decodeAttr(linkMatch[1]).trim(), BASE_URL).toString();
     } catch (e) {
       continue;
     }
-    if (!absolute.startsWith(`${BASE_URL}/`)) continue;
+    if (!absolute.startsWith(`${BASE_URL}/`) || seen.has(absolute)) continue;
+    seen.add(absolute);
     cards.push({
       url: absolute,
       title,
@@ -1007,25 +1008,19 @@ function selectCandidates(cards, meta, wantSerie) {
     return true;
   });
 }
+var FILM_PLAYER_RE = /<iframe\b[^>]*\bsrc="https:\/\/v\.vidxgo\.co\/(\d{5,9})"/i;
+var SERIE_PLAYER_RE = /<iframe\b[^>]*\bsrc="https:\/\/v\.vidxgo\.co\/(\d{5,9})\/\d+\/\d+/i;
 function extractDetailSignals(html, wantSerie) {
   const text = stripComments(html);
   const yearMatch = text.match(/Anno:\s*<\/div>\s*<div[^>]*>\s*((?:19|20)\d{2})\s*<\/div>/i);
-  if (!wantSerie) {
-    const movieMatch = text.match(/<iframe\b[^>]*\bsrc="https:\/\/vixsrc\.to\/movie\/(tt\d+)[^"]*"/i);
-    const hasTvPlayer2 = /vixsrc\.to\/tv\//i.test(text);
-    return {
-      imdb: movieMatch ? movieMatch[1] : null,
-      year: yearMatch ? yearMatch[1] : null,
-      hasPlayer: Boolean(movieMatch) && !hasTvPlayer2
-    };
-  }
-  const imdbMatch = text.match(/var\s+imdb\s*=\s*['"](tt\d+)['"]/i);
-  const hasTvPlayer = /vixsrc\.to\/tv\//i.test(text);
-  const hasMoviePlayer = /<iframe\b[^>]*\bsrc="https:\/\/vixsrc\.to\/movie\//i.test(text);
+  const film = text.match(FILM_PLAYER_RE);
+  const serie = text.match(SERIE_PLAYER_RE);
+  const match = wantSerie ? serie : film;
+  const otherType = wantSerie ? film : serie;
   return {
-    imdb: imdbMatch ? imdbMatch[1] : null,
+    imdb: match ? `tt${match[1]}` : null,
     year: yearMatch ? yearMatch[1] : null,
-    hasPlayer: Boolean(imdbMatch) && hasTvPlayer && !hasMoviePlayer
+    hasPlayer: Boolean(match) && !otherType
   };
 }
 function hostAllowed(hostname) {
@@ -1065,14 +1060,9 @@ function relabelStream(stream) {
   };
   return formatStream(raw, "AltadefinizioneX");
 }
-function postSearch(story) {
+function searchSite(story) {
   return __async(this, null, function* () {
-    const body = encodeForm({ story, do: "search", subaction: "search" });
-    return fetchText(`${BASE_URL}/`, {
-      method: "POST",
-      headers: { "Content-Type": "application/x-www-form-urlencoded" },
-      body
-    });
+    return fetchText(`${BASE_URL}/search?q=${encodeURIComponent(story)}`);
   });
 }
 function getStreams(id, type, season, episode, providerContext = null) {
@@ -1087,7 +1077,7 @@ function getStreams(id, type, season, episode, providerContext = null) {
     if (!meta) return [];
     const expectedImdb = requestImdbId(id, providerContext) || meta.imdbId;
     if (!expectedImdb) return [];
-    const searchHtml = yield postSearch(meta.title);
+    const searchHtml = yield searchSite(meta.title);
     if (!searchHtml) return [];
     const candidates = selectCandidates(parseSearchCards(searchHtml), meta, wantSerie);
     if (candidates.length === 0) return [];

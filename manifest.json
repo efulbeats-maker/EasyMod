@@ -96,7 +96,7 @@
     {
       "id": "easystreams-altadefinizionex",
       "name": "AltadefinizioneX",
-      "version": "1.0.1",
+      "version": "1.0.2",
       "description": "Movies and Series from AltadefinizioneX",
       "resources": ["stream"],
       "contentLanguage": ["it"],

@@ -1,5 +1,5 @@
 const TMDB_API_KEY = "68e094699525b18a70bab2f86b1fa706";
-const BASE_URL = "https://altadefinizionex.surf";
+const BASE_URL = "https://altadefinizionex.stream";
 const USER_AGENT = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36";
 
 // Host consentiti (match esatto o sottodominio): niente includes() su URL intero.
@@ -17,14 +17,6 @@ function siteHeaders(extra = {}) {
     "Accept-Language": "it-IT,it;q=0.9,en-US;q=0.8,en;q=0.7",
     ...extra
   };
-}
-
-// Serializzazione form manuale: il runtime Nuvio potrebbe non fornire i
-// globali di serializzazione dei form; encodeURIComponent e' sempre disponibile.
-function encodeForm(fields) {
-  return Object.keys(fields || {})
-    .map((k) => `${encodeURIComponent(k)}=${encodeURIComponent(fields[k])}`)
-    .join("&");
 }
 
 // Gli iframe/script commentati (es. fallback vidxgo in <!-- -->) non devono
@@ -124,28 +116,37 @@ function normalizeTitle(value) {
     .trim();
 }
 
-// Card risultati DLE: <div class="movie" ... data-year="YYYY" ... data-link="URL">…
-// con titolo in <h2 class="movie-title"><a href="URL">Titolo</a></h2>.
-// data-imdb della card e' il RATING, non l'IMDb: mai usato per la validazione.
+// Schede del sito: <div class="movie" data-title="..." data-year="YYYY" data-link="/cat/ID-slug.html" ...>.
+// data-link e' relativo; data-imdb della card e' il RATING, non l'IMDb: mai usato per la validazione.
+function decodeAttr(value) {
+  return String(value || "")
+    .replace(/&#x27;|&#39;/g, "'")
+    .replace(/&quot;/g, '"')
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&amp;/g, "&");
+}
+
 function parseSearchCards(html) {
   const cards = [];
+  const seen = new Set();
   const chunks = String(html || "").split('<div class="movie"');
   for (let i = 1; i < chunks.length; i++) {
     const body = chunks[i].slice(0, 4000);
     const linkMatch = body.match(/data-link="([^"]+)"/i);
+    const titleMatch = body.match(/data-title="([^"]*)"/i);
     const yearMatch = body.match(/data-year="((?:19|20)\d{2})"/i);
-    const titleMatch = body.match(/<h2 class="movie-title">\s*<a[^>]*href="([^"]+)"[^>]*>([^<]+)<\/a>/i);
-    if (!linkMatch && !titleMatch) continue;
-    const url = (titleMatch ? titleMatch[1] : linkMatch[1]).trim();
-    const title = titleMatch ? titleMatch[2].trim() : "";
-    if (!title || !url) continue;
-    let absolute = url;
+    if (!linkMatch || !titleMatch) continue;
+    const title = decodeAttr(titleMatch[1]).trim();
+    if (!title) continue;
+    let absolute;
     try {
-      absolute = new URL(url, BASE_URL).toString();
+      absolute = new URL(decodeAttr(linkMatch[1]).trim(), BASE_URL).toString();
     } catch {
       continue;
     }
-    if (!absolute.startsWith(`${BASE_URL}/`)) continue;
+    if (!absolute.startsWith(`${BASE_URL}/`) || seen.has(absolute)) continue;
+    seen.add(absolute);
     cards.push({
       url: absolute,
       title,
@@ -180,28 +181,24 @@ function selectCandidates(cards, meta, wantSerie) {
   });
 }
 
-// Dettaglio film: <iframe ... src="https://vixsrc.to/movie/<tt>?lang=it">.
-// Dettaglio serie: var imdb = '<tt>'; + player JS 'https://vixsrc.to/tv/' + imdb.
-// Non basta un tt qualsiasi nei poster: serve il player vixsrc del tipo giusto.
+// Dettaglio film:  <iframe src="https://v.vidxgo.co/<cifre IMDb>"> (senza query: i trailer hanno ?content=trailer).
+// Dettaglio serie: <iframe src="https://v.vidxgo.co/<cifre IMDb>/<stagione>/<episodio>?se=0">.
+// L'ID IMDb si legge solo dall'iframe del player del tipo giusto, mai da un tt qualsiasi nei poster.
+// Lo stream non viene letto da vidxgo: si risolve piu' sotto con il resolver vixsrc.
+const FILM_PLAYER_RE = /<iframe\b[^>]*\bsrc="https:\/\/v\.vidxgo\.co\/(\d{5,9})"/i;
+const SERIE_PLAYER_RE = /<iframe\b[^>]*\bsrc="https:\/\/v\.vidxgo\.co\/(\d{5,9})\/\d+\/\d+/i;
+
 function extractDetailSignals(html, wantSerie) {
   const text = stripComments(html);
   const yearMatch = text.match(/Anno:\s*<\/div>\s*<div[^>]*>\s*((?:19|20)\d{2})\s*<\/div>/i);
-  if (!wantSerie) {
-    const movieMatch = text.match(/<iframe\b[^>]*\bsrc="https:\/\/vixsrc\.to\/movie\/(tt\d+)[^"]*"/i);
-    const hasTvPlayer = /vixsrc\.to\/tv\//i.test(text);
-    return {
-      imdb: movieMatch ? movieMatch[1] : null,
-      year: yearMatch ? yearMatch[1] : null,
-      hasPlayer: Boolean(movieMatch) && !hasTvPlayer
-    };
-  }
-  const imdbMatch = text.match(/var\s+imdb\s*=\s*['"](tt\d+)['"]/i);
-  const hasTvPlayer = /vixsrc\.to\/tv\//i.test(text);
-  const hasMoviePlayer = /<iframe\b[^>]*\bsrc="https:\/\/vixsrc\.to\/movie\//i.test(text);
+  const film = text.match(FILM_PLAYER_RE);
+  const serie = text.match(SERIE_PLAYER_RE);
+  const match = wantSerie ? serie : film;
+  const otherType = wantSerie ? film : serie;
   return {
-    imdb: imdbMatch ? imdbMatch[1] : null,
+    imdb: match ? `tt${match[1]}` : null,
     year: yearMatch ? yearMatch[1] : null,
-    hasPlayer: Boolean(imdbMatch) && hasTvPlayer && !hasMoviePlayer
+    hasPlayer: Boolean(match) && !otherType
   };
 }
 
@@ -248,13 +245,8 @@ function relabelStream(stream) {
   return formatStream(raw, "AltadefinizioneX");
 }
 
-async function postSearch(story) {
-  const body = encodeForm({ story, do: "search", subaction: "search" });
-  return fetchText(`${BASE_URL}/`, {
-    method: "POST",
-    headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    body
-  });
+async function searchSite(story) {
+  return fetchText(`${BASE_URL}/search?q=${encodeURIComponent(story)}`);
 }
 
 async function getStreams(id, type, season, episode, providerContext = null) {
@@ -273,7 +265,7 @@ async function getStreams(id, type, season, episode, providerContext = null) {
   const expectedImdb = requestImdbId(id, providerContext) || meta.imdbId;
   if (!expectedImdb) return [];
 
-  const searchHtml = await postSearch(meta.title);
+  const searchHtml = await searchSite(meta.title);
   if (!searchHtml) return [];
 
   const candidates = selectCandidates(parseSearchCards(searchHtml), meta, wantSerie);
